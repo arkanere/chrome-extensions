@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #16161d;
+        --muted: #6b6b76;
+        --line: rgba(0, 0, 0, 0.1);
+        --track: rgba(0, 0, 0, 0.07);
+        --accent: #2f6fed;
+        --over: #d93a3a;
+        --field: rgba(0, 0, 0, 0.04);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #16161d;
+          --fg: #f2f2f5;
+          --muted: #9a9aa6;
+          --line: rgba(255, 255, 255, 0.12);
+          --track: rgba(255, 255, 255, 0.1);
+          --accent: #6ea8fe;
+          --over: #ff6b6b;
+          --field: rgba(255, 255, 255, 0.07);
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        width: 330px;
+        margin: 0;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      h1 {
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 12px;
+        font-weight: 600;
+      }
+      .site { margin-bottom: 14px; }
+      .row {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .domain {
+        font-weight: 600;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+      .site.over .time { color: var(--over); font-weight: 600; }
+      .bar {
+        height: 5px;
+        border-radius: 3px;
+        background: var(--track);
+        margin-top: 6px;
+        overflow: hidden;
+      }
+      .fill { height: 100%; background: var(--accent); border-radius: 3px; }
+      .site.over .fill { background: var(--over); }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .controls input {
+        width: 52px;
+        padding: 3px 5px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: var(--field);
+        color: var(--fg);
+        font: inherit;
+        font-variant-numeric: tabular-nums;
+      }
+      .spacer { flex: 1; }
+      .link {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--muted);
+        font: inherit;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .link:hover { color: var(--fg); }
+      .empty { color: var(--muted); margin-bottom: 14px; }
+      form {
+        display: flex;
+        gap: 6px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+      form input {
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--field);
+        color: var(--fg);
+        font: inherit;
+        min-width: 0;
+      }
+      #domain { flex: 1; }
+      #minutes { width: 62px; font-variant-numeric: tabular-nums; }
+      form button {
+        padding: 6px 12px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Today</h1>
+    <div id="list"></div>
+    <form id="add">
+      <input id="domain" type="text" placeholder="youtube.com" required />
+      <input id="minutes" type="number" min="1" max="1440" value="60" required />
+      <button type="submit">Add</button>
+    </form>
+    <script src="popup.js"></script>
+  </body>
+</html>
