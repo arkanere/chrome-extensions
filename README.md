@@ -1,4 +1,4 @@
-# chrome-extension
+# chrome-extensions
 
 Chrome extensions I built because I wanted them. Each one lives in its own folder
 under `extensions/` and is loaded separately — Chrome has no concept of a "bundle",
