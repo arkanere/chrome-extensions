@@ -30,6 +30,20 @@ paragraph), ready to paste anywhere. Click a highlight to remove it.
 Highlights are session-only: they live while the overlay is open and vanish
 when you close it. Nothing is stored.
 
+## Define
+
+The same selection pill has a **Define** button for words and short phrases
+(up to ~8 words). It opens a small card next to your selection: single words
+get dictionary definitions with phonetics and part of speech from
+[dictionaryapi.dev](https://dictionaryapi.dev); phrases and names fall back to
+a Wikipedia summary with a link to the full article. Esc or clicking anywhere
+else dismisses the card (a second Esc closes the reader).
+
+This is the extension's only network use: the selected term is sent to
+`api.dictionaryapi.dev` and/or `en.wikipedia.org` — the two hosts listed under
+`host_permissions`. Lookups run in the service worker so page CSP can't block
+them. Nothing else leaves the browser.
+
 ## How it works
 
 Nothing runs until you click the icon. `background.js` injects

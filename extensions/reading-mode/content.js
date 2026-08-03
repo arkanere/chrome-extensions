@@ -15,6 +15,8 @@
   function onKeydown(e) {
     if (e.key === "Escape") {
       e.stopPropagation();
+      // First Esc dismisses an open dictionary popover; second closes reader.
+      if (state.dismissPopover && state.dismissPopover()) return;
       close();
     }
   }
@@ -54,7 +56,13 @@
 
     const pill = document.createElement("div");
     pill.className = "rm-pill";
-    pill.textContent = "Highlight";
+    const hlBtn = document.createElement("span");
+    hlBtn.className = "rm-pill-btn";
+    hlBtn.textContent = "Highlight";
+    const defBtn = document.createElement("span");
+    defBtn.className = "rm-pill-btn";
+    defBtn.textContent = "Define";
+    pill.append(hlBtn, defBtn);
     scrollEl.appendChild(pill);
 
     const chip = document.createElement("div");
@@ -155,20 +163,110 @@
         pill.style.left =
           Math.min(Math.max(rect.left + rect.width / 2, 70), innerWidth - 70) + "px";
         pill.style.top = Math.min(rect.bottom + 10, innerHeight - 52) + "px";
+        // Define only makes sense for a word or short phrase.
+        const term = getSelection().toString().trim();
+        defBtn.style.display =
+          term && term.length <= 80 && term.split(/\s+/).length <= 8 ? "" : "none";
         pill.classList.add("show");
       }, 0);
     });
-    scrollEl.addEventListener("scroll", hidePill, { passive: true });
+    scrollEl.addEventListener(
+      "scroll",
+      () => {
+        hidePill();
+        dismissPopover();
+      },
+      { passive: true }
+    );
+    scrollEl.addEventListener("mousedown", (e) => {
+      if (pop && !pop.contains(e.target)) dismissPopover();
+    });
 
     // mousedown would collapse the selection before click fires.
     pill.addEventListener("mousedown", (e) => e.preventDefault());
-    pill.addEventListener("click", () => {
+    hlBtn.addEventListener("click", () => {
       const range = currentRange();
       hidePill();
       if (!range) return;
       wrapRange(range, String(nextId++));
       getSelection().removeAllRanges();
       updateChip();
+    });
+
+    // --- Dictionary popover ---------------------------------------------
+
+    let pop = null;
+
+    function dismissPopover() {
+      if (!pop) return false;
+      pop.remove();
+      pop = null;
+      return true;
+    }
+    state.dismissPopover = dismissPopover;
+
+    function el(tag, cls, text) {
+      const n = document.createElement(tag);
+      n.className = cls;
+      if (text) n.textContent = text;
+      return n;
+    }
+
+    function showPopover(term, x, y) {
+      dismissPopover();
+      pop = el("div", "rm-pop", "Looking up…");
+      const w = Math.min(360, innerWidth - 48);
+      pop.style.width = w + "px";
+      pop.style.left =
+        Math.min(Math.max(x - w / 2, 16), innerWidth - w - 16) + "px";
+      pop.style.top = Math.max(16, Math.min(y, innerHeight - 336)) + "px";
+      scrollEl.appendChild(pop);
+
+      chrome.runtime.sendMessage({ type: "rm-define", term }, (res) => {
+        if (!pop) return; // dismissed while loading
+        pop.textContent = "";
+        if (!res || !res.ok) {
+          pop.textContent = `No definition found for “${term}”.`;
+          return;
+        }
+        const head = el("div", "rm-pop-term", res.word);
+        if (res.source === "dictionary" && res.phonetic) {
+          head.appendChild(el("span", "rm-pop-phon", " " + res.phonetic));
+        }
+        pop.appendChild(head);
+        if (res.source === "dictionary") {
+          for (const m of res.meanings) {
+            pop.appendChild(el("div", "rm-pop-pos", m.pos));
+            for (const d of m.defs) {
+              const dv = el("div", "rm-pop-def", d.def);
+              if (d.example) dv.appendChild(el("div", "rm-pop-ex", "“" + d.example + "”"));
+              pop.appendChild(dv);
+            }
+          }
+        } else {
+          pop.appendChild(el("div", "rm-pop-def", res.extract));
+          if (res.url && /^https:\/\/en\.wikipedia\.org\//.test(res.url)) {
+            const a = document.createElement("a");
+            a.className = "rm-pop-src";
+            a.href = res.url;
+            a.target = "_blank";
+            a.rel = "noopener";
+            a.textContent = "Wikipedia →";
+            pop.appendChild(a);
+          } else {
+            pop.appendChild(el("div", "rm-pop-src", "Wikipedia"));
+          }
+        }
+      });
+    }
+
+    defBtn.addEventListener("click", () => {
+      const term = getSelection().toString().trim();
+      const x = parseFloat(pill.style.left);
+      const y = parseFloat(pill.style.top);
+      hidePill();
+      getSelection().removeAllRanges();
+      if (term) showPopover(term, x, y);
     });
 
     body.addEventListener("click", (e) => {
