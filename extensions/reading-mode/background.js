@@ -34,10 +34,30 @@ async function lookup(term) {
       /* fall through to Wikipedia */
     }
   }
+  // Exact title match first; if the phrase isn't a page name, search for the
+  // closest article and summarize that instead.
+  const summary = await wikiSummary(term);
+  if (summary) return summary;
+  try {
+    const r = await fetch(
+      "https://en.wikipedia.org/w/rest.php/v1/search/page?limit=1&q=" +
+        encodeURIComponent(term)
+    );
+    if (r.ok) {
+      const hit = (await r.json()).pages?.[0];
+      if (hit) return await wikiSummary(hit.title);
+    }
+  } catch {
+    /* no luck anywhere */
+  }
+  return { ok: false };
+}
+
+async function wikiSummary(title) {
   try {
     const r = await fetch(
       "https://en.wikipedia.org/api/rest_v1/page/summary/" +
-        encodeURIComponent(term) +
+        encodeURIComponent(title) +
         "?redirect=true"
     );
     if (r.ok) {
@@ -53,9 +73,9 @@ async function lookup(term) {
       }
     }
   } catch {
-    /* no luck anywhere */
+    /* treat as no match */
   }
-  return { ok: false };
+  return null;
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
