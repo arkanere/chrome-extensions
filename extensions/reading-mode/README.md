@@ -20,6 +20,16 @@ overlay is the article and nothing else.
 If a page has no extractable article (a homepage, a web app), it shows a brief
 notice instead.
 
+## Highlights
+
+Select any text in the reader and a small **Highlight** pill appears — click it
+to mark the passage. A chip in the bottom-right corner counts your highlights;
+clicking it copies them all to the clipboard as plain text (one passage per
+paragraph), ready to paste anywhere. Click a highlight to remove it.
+
+Highlights are session-only: they live while the overlay is open and vanish
+when you close it. Nothing is stored.
+
 ## How it works
 
 Nothing runs until you click the icon. `background.js` injects
