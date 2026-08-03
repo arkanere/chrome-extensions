@@ -6,7 +6,8 @@
   "permissions": ["activeTab", "scripting"],
   "host_permissions": [
     "https://api.dictionaryapi.dev/*",
-    "https://en.wikipedia.org/*"
+    "https://en.wikipedia.org/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"

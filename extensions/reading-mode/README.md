@@ -39,8 +39,17 @@ get dictionary definitions with phonetics and part of speech from
 a Wikipedia summary with a link to the full article. Esc or clicking anywhere
 else dismisses the card (a second Esc closes the reader).
 
-This is the extension's only network use: the selected term is sent to
-`api.dictionaryapi.dev` and/or `en.wikipedia.org` — the two hosts listed under
+**Gemini (optional).** Copy `config.example.js` to `config.js` and add a
+[Google AI Studio](https://aistudio.google.com/apikey) free-tier key, and
+Define uses Gemini instead: it sends the term *plus its surrounding paragraph*
+and gets back a context-aware explanation — much better for phrases, idioms,
+and jargon than a dictionary. `config.js` is gitignored; never commit a key.
+If the key is missing or the request fails, it falls back to the free lookups
+above automatically.
+
+Network use: the selected term goes to `api.dictionaryapi.dev` and/or
+`en.wikipedia.org`, or (with a key configured) the term and its surrounding
+paragraph go to `generativelanguage.googleapis.com` — the hosts listed under
 `host_permissions`. Lookups run in the service worker so page CSP can't block
 them. Nothing else leaves the browser.
 

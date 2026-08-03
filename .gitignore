@@ -1,2 +1,6 @@
 .DS_Store
 *.zip
+
+# Local secrets (see config.example.js in each extension)
+config.js
+.env

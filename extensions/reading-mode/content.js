@@ -212,7 +212,7 @@
       return n;
     }
 
-    function showPopover(term, x, y) {
+    function showPopover(term, context, x, y) {
       dismissPopover();
       pop = el("div", "rm-pop", "Looking up…");
       const w = Math.min(360, innerWidth - 48);
@@ -222,7 +222,7 @@
       pop.style.top = Math.max(16, Math.min(y, innerHeight - 336)) + "px";
       scrollEl.appendChild(pop);
 
-      chrome.runtime.sendMessage({ type: "rm-define", term }, (res) => {
+      chrome.runtime.sendMessage({ type: "rm-define", term, context }, (res) => {
         if (!pop) return; // dismissed while loading
         pop.textContent = "";
         if (!res || !res.ok) {
@@ -254,7 +254,9 @@
             a.textContent = "Wikipedia →";
             pop.appendChild(a);
           } else {
-            pop.appendChild(el("div", "rm-pop-src", "Wikipedia"));
+            pop.appendChild(
+              el("div", "rm-pop-src", res.source === "gemini" ? "Gemini" : "Wikipedia")
+            );
           }
         }
       });
@@ -262,11 +264,22 @@
 
     defBtn.addEventListener("click", () => {
       const term = getSelection().toString().trim();
+      // Surrounding paragraph, so an LLM lookup can explain the term as used
+      // here rather than in the abstract.
+      let context = "";
+      const range = currentRange();
+      if (range) {
+        const c = range.commonAncestorContainer;
+        const elc = c.nodeType === Node.TEXT_NODE ? c.parentElement : c;
+        const block =
+          elc.closest("p, li, blockquote, h1, h2, h3, h4, figcaption, td") || elc;
+        context = block.textContent.replace(/\s+/g, " ").trim().slice(0, 600);
+      }
       const x = parseFloat(pill.style.left);
       const y = parseFloat(pill.style.top);
       hidePill();
       getSelection().removeAllRanges();
-      if (term) showPopover(term, x, y);
+      if (term) showPopover(term, context, x, y);
     });
 
     body.addEventListener("click", (e) => {

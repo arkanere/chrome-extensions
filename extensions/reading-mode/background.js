@@ -1,10 +1,58 @@
 // Toolbar click → inject the reader into the active tab. Re-running the
 // content script on a tab where it's already loaded toggles the overlay
 // (content.js guards with a window flag), so one handler covers open and close.
+// Local key file (gitignored). Missing file just means no Gemini — the
+// dictionary/Wikipedia pipeline below still works.
+try {
+  importScripts("config.js");
+} catch {
+  /* no config.js — fall back to free lookups */
+}
+
+// Context-aware definition via Gemini free tier. Returns null on any failure
+// so the caller can fall back.
+async function geminiDefine(term, context) {
+  const key =
+    typeof RM_CONFIG !== "undefined" && RM_CONFIG.GEMINI_API_KEY;
+  if (!key) return null;
+  const prompt =
+    `Explain the meaning of "${term}"` +
+    (context ? ` as used in this passage:\n\n"${context}"\n\n` : ". ") +
+    "Reply with a plain-text explanation of 2-3 short sentences. " +
+    "No markdown, no preamble.";
+  try {
+    const r = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": key,
+        },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      }
+    );
+    if (!r.ok) return null;
+    const d = await r.json();
+    const text = d.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text) return null;
+    return { ok: true, source: "gemini", word: term, extract: text, url: "" };
+  } catch {
+    return null;
+  }
+}
+
 // Dictionary lookups run here rather than in the content script so page CSP
-// can't block them. Single words go to dictionaryapi.dev; phrases (or words
-// the dictionary doesn't know) fall back to Wikipedia's summary API.
-async function lookup(term) {
+// can't block them. Gemini (if a key is configured) gives context-aware
+// answers; otherwise single words go to dictionaryapi.dev and phrases fall
+// back to Wikipedia.
+async function lookup(term, context) {
+  const ai = await geminiDefine(term, context);
+  if (ai) return ai;
+  return freeLookup(term);
+}
+
+async function freeLookup(term) {
   if (/^\S+$/.test(term)) {
     try {
       const r = await fetch(
@@ -80,7 +128,9 @@ async function wikiSummary(title) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "rm-define") {
-    lookup(String(msg.term).trim()).then(sendResponse);
+    lookup(String(msg.term).trim(), String(msg.context || "").trim()).then(
+      sendResponse
+    );
     return true; // keep sendResponse alive for the async reply
   }
 });
