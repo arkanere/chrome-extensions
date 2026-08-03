@@ -6,7 +6,7 @@
   all: initial;
 }
 
-.page {
+.rm-scroll {
   --bg: #faf8f2;
   --ink: #2b2a27;
   --ink-soft: #8a857c;
@@ -27,7 +27,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .page {
+  .rm-scroll {
     --bg: #1c1b19;
     --ink: #d8d3c8;
     --ink-soft: #7d786e;

@@ -72,8 +72,10 @@
     style.textContent = state.cssText;
     shadow.appendChild(style);
 
+    // Not "page" — Readability's own output wraps content in class="page",
+    // which would collide inside the shadow root.
     const page = document.createElement("div");
-    page.className = "page";
+    page.className = "rm-scroll";
     const articleEl = document.createElement("article");
 
     const title = document.createElement("h1");
