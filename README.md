@@ -9,6 +9,7 @@ so every extension is installed on its own.
 | Extension | What it does |
 | --- | --- |
 | [`time-check`](extensions/time-check) | Daily time budgets per site, with escalating nags once you're over |
+| [`reading-mode`](extensions/reading-mode) | One-click distraction-free reading view for any article, light/dark, zero UI |
 
 ## Installing any of them
 
