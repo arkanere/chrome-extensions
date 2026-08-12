@@ -265,8 +265,7 @@ Reached by the end of phase 6. Earlier phases create only their own files.
 ```
 pdf-reader/
   manifest.json
-  background.js              # background/interceptor
-  rules.json                 # declarativeNetRequest static rules
+  background.js              # background/interceptor, incl. the redirect rules
   viewer.html                # the viewer page
   viewer.js                  # wiring only: builds the modules, connects them
   viewer.css
@@ -307,11 +306,11 @@ Delete the throwaway extension afterwards. Its findings belong in this document,
 
 **Answers** open question 3.
 
-**Files:** `manifest.json`, `background.js`, `rules.json`, `viewer.html`, `viewer.js`, `viewer.css`, `icons/`
+**Files:** `manifest.json`, `background.js`, `viewer.html`, `viewer.js`, `viewer.css`, `icons/`
 
-- `manifest.json`: MV3. Permissions `declarativeNetRequest`, `storage`, `tts`, `contextMenus`. `viewer.html` in `web_accessible_resources`.
-- `rules.json`: redirect `*.pdf` main-frame navigations to `viewer.html?src=<original URL>`.
-- `background.js`: toolbar action opens the current tab's URL in the viewer; a context-menu item on links does the same.
+- `manifest.json`: MV3. Permissions `declarativeNetRequest`, `storage`, `contextMenus`. `viewer.html` in `web_accessible_resources`.
+- `background.js`: registers a **dynamic** `declarativeNetRequest` rule redirecting `*.pdf` main-frame navigations to `viewer.html?src=<original URL>`. Dynamic rather than a static `rules.json` because `regexSubstitution` needs an absolute URL, and the extension ID is only knowable at runtime via `chrome.runtime.getURL()` unless the manifest pins a `key`. Also: toolbar action opens the current tab's URL in the viewer, and a context-menu item on links does the same.
+- The original URL is appended **raw**, not encoded — DNR cannot URL-encode during substitution. `viewer.js` therefore reads everything after `?src=` literally instead of via `URLSearchParams`, so a query string inside the PDF URL survives.
 - `viewer.html`: reads `?src=`, shows the URL and a file picker. No PDF rendering yet.
 
 **Exit criteria**

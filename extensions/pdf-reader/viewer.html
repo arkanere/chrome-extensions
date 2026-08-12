@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PDF Reader</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <header>
+    <h1>PDF Reader</h1>
+    <label class="picker">
+      Open a local PDF
+      <input type="file" id="file" accept="application/pdf">
+    </label>
+  </header>
+
+  <main>
+    <section id="source">
+      <h2>Source</h2>
+      <p id="src-line" class="empty">No document yet.</p>
+    </section>
+
+    <section id="log">
+      <h2>Status</h2>
+      <pre id="log-body"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>

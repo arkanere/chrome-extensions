@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "PDF Reader",
+  "version": "0.1.0",
+  "description": "Open PDFs in a viewer that can read them aloud with Chrome's local neural voices.",
+  "permissions": ["declarativeNetRequest", "contextMenus", "storage"],
+  "host_permissions": ["*://*/*", "file://*/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open this PDF in PDF Reader"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["viewer.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
