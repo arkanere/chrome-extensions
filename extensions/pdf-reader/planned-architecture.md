@@ -73,6 +73,34 @@ Both voices honour `rate` correctly across 0.6-2.5.
 - `file://` PDFs need the user to enable "Allow access to file URLs" manually. This cannot be requested programmatically.
 - Voice availability is per-machine. Natural voices need Chrome's component download; macOS Enhanced/Premium voices need a manual download by the user. A fallback chain is mandatory.
 
+### 2.5 Confirmed through `chrome.tts` (phase 0)
+
+Everything in 2.3 was measured through `speechSynthesis`. Phase 0 re-ran it through `chrome.tts.getVoices()` and `chrome.tts.speak()`, which is what we actually build on. **Open question 1 is answered: yes.**
+
+`getVoices()` returned 212 voices, including **7 `(Natural)` voices**, all `remote: false`, all declaring `word` in `eventTypes`. Three families are visible:
+
+| Family | Count | `remote` | `eventTypes` |
+|---|---|---|---|
+| macOS system voices (Samantha, Rishi, Daniel, novelty voices…) | 186 | local | `start end word pause resume` |
+| `Google …` network voices | 19 | **remote** | `start end interrupted cancelled error` — **no `word`** |
+| `Chrome OS US English 1-8` and `Google US English 1-7 (Natural)` | 15 | local | `start end word interrupted cancelled error` |
+
+Speak test, rate 1.0:
+
+| Voice | Text | First `start` | `start` events | `word` events | Distinct `charIndex` | Words | Per word |
+|---|---|---|---|---|---|---|---|
+| `Google US English 1 (Natural)` | 56 chars | 771 ms | **8** | 20 | 20 | 10 | **2.00** |
+| `Google US English 1 (Natural)` | 573 chars | 1329 ms | **8** | 182 | 182 | 91 | **2.00** |
+| `Rishi` (macOS local) | 56 chars | 158 ms | 1 | 10 | 10 | 10 | 1.00 |
+| `Rishi` (macOS local) | 573 chars | 9 ms | 1 | 91 | 91 | 91 | 1.00 |
+
+What this changes:
+
+1. **Both Natural quirks are confirmed exactly, through `chrome.tts`.** 8 `start` events regardless of length, and 2.00 `word` events per word at fully distinct `charIndex` values. Sections 5.1 and 6 stand as written.
+2. **`eventTypes` is trustworthy.** Every remote voice omits `word`; every local one declares it. So `VoiceInfo.supportsWordEvents` is just `eventTypes.includes("word")` — no probing speak needed to build the picker.
+3. **Startup latency is less alarming than 2.3 suggested.** The 3001 ms paragraph figure did not reproduce: 1329 ms for a comparable block, and the second Rishi run came back in 9 ms, so part of what 2.3 measured was engine warm-up rather than per-utterance cost. Sentence chunking is still right — 771 ms for one sentence is too long to sit through at a document boundary — but pre-buffering (section 6) matters more than the raw numbers implied. Still deferred, still worth measuring in phase 4.
+4. **The `pause`/`resume` event types on macOS voices are not a reason to use `chrome.tts.pause()`.** Natural voices do not offer them, and section 6's stop-and-remember keeps one code path across both families.
+
 ## 3. Module map
 
 The design separates **what the document says** from **how it is spoken** from **how it is drawn**. These three change for different reasons and should never import each other.
@@ -172,9 +200,11 @@ interface VoiceInfo {
   id: string
   label: string
   local: boolean
-  supportsWordEvents: boolean   // false => hide it, we cannot highlight
+  supportsWordEvents: boolean   // = eventTypes.includes("word"); false => hide it
 }
 ```
+
+`supportsWordEvents` reads straight off `eventTypes`, which 2.5 confirmed is accurate on every voice on this machine. No probe utterance is needed to populate the picker.
 
 The `chrome.tts` implementation absorbs the quirks measured in 2.3 — the 8 `onstart` calls and the two-events-per-word behaviour — so nothing upstream ever sees them. **This is the main reason the adapter exists.**
 
@@ -235,8 +265,8 @@ Voices without word-boundary events are **hidden from the picker** rather than o
 
 Each question below has a decision attached. The questions stay written down because the *reasons* still matter if a decision has to be revisited — but none of them blocks starting work.
 
-1. **Does `chrome.tts.getVoices()` expose the `(Natural)` voices?** All measurements so far used `speechSynthesis`. It routes through the same platform stack, so it should, but this is unverified and the whole design rests on it.
-   → **Proceed on the assumption that it does.** Phase 0 verifies it in a few minutes, so the risk is cheap to retire. If it turns out false, the fallback in phase 0 applies and only `speech/adapter.js` is affected.
+1. ~~**Does `chrome.tts.getVoices()` expose the `(Natural)` voices?**~~
+   → **Answered: yes.** Seven of them, local, all declaring `word` events, with both quirks reproducing exactly. See 2.5. `speechSynthesis` is no longer needed as a fallback.
 
 2. **Do macOS Premium voices expose word events?** None are installed here, so untested. If they do, they may become the better default.
    → **Not pursued.** Natural is the default for now. Revisit only if Natural disappoints in real use.
@@ -285,20 +315,9 @@ pdf-reader/
 
 ---
 
-### Phase 0 — Voice probe
+### Phase 0 — Voice probe ✅ done
 
-**Retires the risk in** open question 1. Half an hour at most, and it decides the shape of `speech/adapter.js`, so do it first — but the design assumes it passes, and phases 1 and 2 touch nothing it could invalidate.
-
-Build a throwaway unpacked extension — a service worker and nothing else — that calls `chrome.tts.getVoices()` and logs the full result. Then, from the same worker, `chrome.tts.speak()` one sentence with the best `(Natural)` voice found, with an `onEvent` handler logging every event, and record: does `word` fire, how many times, and with what `charIndex` values.
-
-**Exit criteria**
-
-- The voice list is captured in the doc, with `voiceName`, `remote`, and `eventTypes` for each.
-- Confirmed whether a `(Natural)` voice appears **and** emits `word` events.
-
-**If it fails:** the fallback is `speechSynthesis` inside the viewer page, where the play button click supplies the user activation. Only `speech/adapter.js` changes shape; the rest of the design stands. Record the decision here in section 2 before moving on.
-
-Delete the throwaway extension afterwards. Its findings belong in this document, not in the repo.
+**Retired the risk in** open question 1. Results are in section 2.5; the throwaway extension has been deleted. Nothing further to do here.
 
 ---
 
