@@ -271,8 +271,8 @@ Each question below has a decision attached. The questions stay written down bec
 2. **Do macOS Premium voices expose word events?** None are installed here, so untested. If they do, they may become the better default.
    → **Not pursued.** Natural is the default for now. Revisit only if Natural disappoints in real use.
 
-3. **How much can `declarativeNetRequest` actually catch?** Specifically: does it fire on `file://` at all, and how many real-world PDF URLs lack a `.pdf` path?
-   → **Accepted as-is.** Interception is best-effort by design (section 9) and manual entry is the guaranteed path. Phase 1 records what it caught; that record informs nothing more than expectations.
+3. ~~**Does `declarativeNetRequest` fire on `file://`?**~~
+   → **Answered: yes**, with the "Allow access to file URLs" switch on. Local PDFs are intercepted like any other. Extensionless HTTP URLs remain uncatchable — DNR matches on URL, never on `Content-Type` — and the toolbar button covers them, as section 9 intended.
 
 4. **How well does sentence splitting survive real PDFs?** Headers, footers, footnote markers, hyphenated line breaks and multi-column layouts all corrupt naive splitting. This is the largest unknown and the bulk of the real work.
    → **Start simple and iterate.** Ship the naive split from phase 3, run it on real documents, and fix only what actually breaks. Do not build layout analysis up front.
@@ -321,9 +321,9 @@ pdf-reader/
 
 ---
 
-### Phase 1 — Shell: manifest, interception, manual entry
+### Phase 1 — Shell: manifest, interception, manual entry ✅ done
 
-**Answers** open question 3.
+**Answered** open question 3, better than expected: the dynamic rule **does** fire on `file://` main-frame navigations, so opening a local PDF from Finder or a `file://` link lands in our viewer. `*.pdf` HTTP URLs are caught as designed; extensionless URLs still are not, and the toolbar button covers those.
 
 **Files:** `manifest.json`, `background.js`, `viewer.html`, `viewer.js`, `viewer.css`, `icons/`
 
@@ -341,9 +341,14 @@ pdf-reader/
 
 ---
 
-### Phase 2 — Render
+### Phase 2 — Render ✅ done
 
 **Files:** `core/source.js`, `core/parser.js`, `view/renderer.js`
+
+Two things learned while building it, both recorded because they are not obvious:
+
+- **`fetch()` refuses the `file:` scheme** even with "Allow access to file URLs" granted. `XMLHttpRequest` still honours it, so `core/source.js` uses XHR for `file://` and `fetch` for everything else. A successful `file://` read reports `status: 0`.
+- **pdf.js is vendored at v6.2.108**, as `lib/pdf.mjs`, `lib/pdf.worker.mjs` and `lib/standard_fonts/` (~3.7 MB total). `cmaps/` was left out — it is only needed for CJK documents, and can be added if one turns up. In v6, `page.render()` takes `canvas` directly and the text layer is the `TextLayer` class.
 
 - `core/source.js`: URL or `File` → `ArrayBuffer`, plus SHA-256 of the bytes via `crypto.subtle.digest` as the document key.
 - `core/parser.js`: wraps pdf.js. Opens the buffer, exposes `pageCount`, `renderPage(n, canvas, scale)`, `textItems(n)`. **Nothing above this file imports pdf.js.**

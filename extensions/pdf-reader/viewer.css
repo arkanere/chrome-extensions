@@ -1,9 +1,9 @@
 :root {
-  --bg: #f7f7f5;
+  --bg: #edecea;
   --panel: #fff;
   --ink: #1c1c1a;
   --muted: #6b6b66;
-  --line: #e2e2dd;
+  --line: #dcdbd6;
 }
 
 * { box-sizing: border-box; }
@@ -16,40 +16,107 @@ body {
 }
 
 header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 24px;
+  padding: 10px 20px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
 
-h1 { font-size: 16px; margin: 0; letter-spacing: -0.01em; }
-h2 { font-size: 12px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+h1 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tools { display: flex; align-items: center; gap: 10px; flex: none; }
+
+.tools button {
+  font: inherit;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+.tools button:hover { background: var(--bg); }
+
+#zoom-level { font-size: 12px; color: var(--muted); min-width: 40px; text-align: center; }
 
 .picker { font-size: 13px; color: var(--muted); }
-.picker input { margin-left: 8px; font: inherit; }
+.picker input { display: none; }
+.picker:hover { color: var(--ink); cursor: pointer; }
 
-main { max-width: 900px; margin: 0 auto; padding: 24px; }
-
-section {
-  background: var(--panel);
-  border: 1px solid var(--line);
+#notice {
+  max-width: 720px;
+  margin: 24px auto 0;
+  padding: 14px 16px;
+  background: #fff8e1;
+  border: 1px solid #f0e0a8;
   border-radius: 8px;
-  padding: 16px 18px;
-  margin-bottom: 16px;
+  font-size: 14px;
+}
+#notice.error { background: #ffebee; border-color: #f3c2c2; }
+#notice code { background: rgba(0, 0, 0, 0.06); padding: 1px 5px; border-radius: 4px; }
+
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0 60px;
 }
 
-#src-line { margin: 0; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-#src-line.empty { color: var(--muted); font-family: inherit; font-size: 15px; }
-
-pre {
-  margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--muted);
-  white-space: pre-wrap;
-  word-break: break-word;
+.page {
+  position: relative;
+  background: var(--panel);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
 }
+.page.loading { background: var(--panel) linear-gradient(var(--bg), var(--bg)) no-repeat center / 40% 8px; }
+.page.failed { outline: 2px solid #c62828; }
+.page canvas { display: block; }
+
+/* pdf.js text layer: invisible spans positioned over the canvas. They give us
+   native selection now and, in phase 5, highlight geometry for free. */
+.text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: transparent;
+  z-index: 2;
+}
+
+.text-layer span,
+.text-layer br {
+  position: absolute;
+  white-space: pre;
+  color: transparent;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.text-layer ::selection { background: rgba(100, 150, 255, 0.35); }
+
+.text-layer .endOfContent {
+  position: absolute;
+  inset: 100% 0 0;
+  display: block;
+  z-index: -1;
+  cursor: default;
+  user-select: none;
+}
+.text-layer .endOfContent.active { top: 0; }

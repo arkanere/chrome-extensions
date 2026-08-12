@@ -7,24 +7,21 @@
 </head>
 <body>
   <header>
-    <h1>PDF Reader</h1>
-    <label class="picker">
-      Open a local PDF
-      <input type="file" id="file" accept="application/pdf">
-    </label>
+    <h1 id="title">PDF Reader</h1>
+    <div class="tools">
+      <button id="zoom-out" title="Zoom out">−</button>
+      <span id="zoom-level">130%</span>
+      <button id="zoom-in" title="Zoom in">+</button>
+      <label class="picker">
+        Open a PDF
+        <input type="file" id="file" accept="application/pdf">
+      </label>
+    </div>
   </header>
 
-  <main>
-    <section id="source">
-      <h2>Source</h2>
-      <p id="src-line" class="empty">No document yet.</p>
-    </section>
+  <div id="notice" hidden></div>
 
-    <section id="log">
-      <h2>Status</h2>
-      <pre id="log-body"></pre>
-    </section>
-  </main>
+  <main id="pages"></main>
 
   <script type="module" src="viewer.js"></script>
 </body>
