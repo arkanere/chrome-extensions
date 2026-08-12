@@ -1,6 +1,24 @@
-# PDF Reader — Planned Architecture
+# PDF Reader — Architecture
 
-Status: **planning only**. Nothing is built yet. This document records the design and the measured facts behind it.
+Status: **phases 0-2 built and working.** The extension intercepts PDFs, opens them in its own viewer and renders them with a selectable text layer. No audio yet — that starts at phase 4.
+
+This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
+
+## 0. Where things stand
+
+| Phase | State | Notes |
+|---|---|---|
+| 0 — Voice probe | **done** | `chrome.tts` exposes 7 local `(Natural)` voices with word events. Findings in 2.5 |
+| 1 — Shell, interception, manual entry | **done** | Redirect fires on `file://` too. `manifest.json`, `background.js`, `viewer.*` |
+| 2 — Render | **built, unconfirmed** | pdf.js 6.2.108 vendored. `core/source.js`, `core/parser.js`, `view/renderer.js`. Written and syntax-checked but **not yet opened in a browser** — run its exit criteria before building on it |
+| 3 — Text model | **next** | `core/document-model.js`. The largest unknown — see open question 4 |
+| 4 — Audio | not started | `speech/adapter.js`, `player/controller.js` |
+| 5 — Highlight | not started | `view/highlighter.js` |
+| 6 — Controls, settings, resume | not started | `view/controls.js`, `store/settings.js` |
+
+**To resume:** read section 3 (module map), then section 11's phase 3. Everything phases 0-2 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
+
+**Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist.
 
 ## 1. What we are building
 
@@ -341,7 +359,7 @@ pdf-reader/
 
 ---
 
-### Phase 2 — Render ✅ done
+### Phase 2 — Render ⚠️ built, not yet confirmed in a browser
 
 **Files:** `core/source.js`, `core/parser.js`, `view/renderer.js`
 
@@ -356,11 +374,12 @@ Two things learned while building it, both recorded because they are not obvious
 
 Vendor pdf.js by copying `pdf.mjs` and `pdf.worker.mjs` from a release build into `lib/`. Set the worker path to the packaged file — no CDN (section 9).
 
-**Exit criteria**
+**Exit criteria** — none of these have been run yet
 
 - A multi-page PDF renders, scrolls, and text is selectable with the mouse.
 - Works for an intercepted URL, a manually opened URL, and a picked local file.
 - The extension is already useful as a plain PDF viewer.
+- **Watch:** page boxes are sized up front with one `getViewport` call per page, so the scrollbar is correct before anything rasterises. On a 300+ page book this may be slow to open. If it is, assume a uniform page size from page 1 instead of measuring every page.
 
 ---
 
