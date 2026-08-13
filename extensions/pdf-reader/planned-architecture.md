@@ -10,17 +10,17 @@ This document records the design, the measured facts behind it, and what each ph
 |---|---|---|
 | 0 — Voice probe | **done** | `chrome.tts` exposes 7 local `(Natural)` voices with word events. Findings in 2.5 |
 | 1 — Shell, interception, manual entry | **done** | Redirect fires on `file://` too. `manifest.json`, `background.js`, `viewer.*` |
-| 2 — Render | **built, unconfirmed** | pdf.js 6.2.108 vendored. `core/source.js`, `core/parser.js`, `view/renderer.js`. Written and syntax-checked but **not yet opened in a browser** — run its exit criteria before trusting the rendering half |
-| 3 — Text model | **done** | `core/document-model.js`. Run against 8 real PDFs outside Chrome; open question 4 answered in 2.6 |
+| 2 — Render | **done** | pdf.js 6.2.108 vendored. `core/source.js`, `core/parser.js`, `view/renderer.js`. Exit criteria run in Chrome, all passed |
+| 3 — Text model | **done** | `core/document-model.js`. Run against 8 real PDFs outside Chrome, then confirmed in the viewer; open question 4 answered in 2.6 |
 | 4 — Audio | **next** | `speech/adapter.js`, `player/controller.js` |
 | 5 — Highlight | not started | `view/highlighter.js` |
 | 6 — Controls, settings, resume | not started | `view/controls.js`, `store/settings.js` |
 
 **To resume:** read section 3 (module map), then section 11's phase 4. Everything phases 0-3 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
 
-**Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6).
+**Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6) before being confirmed in the viewer.
 
-**Two things still owed to the browser:** phase 2's exit criteria have never been run, and phase 3's model has only been exercised in node — its wiring in `viewer.js` is unopened. Both are one session at `chrome://extensions` away.
+**Nothing is owed to the browser.** Phases 0-3 have all had their exit criteria run in Chrome. The extension is a working PDF viewer today; phase 4 is the first that adds sound.
 
 ## 1. What we are building
 
@@ -394,7 +394,7 @@ pdf-reader/
 
 ---
 
-### Phase 2 — Render ⚠️ built, not yet confirmed in a browser
+### Phase 2 — Render ✅ done
 
 **Files:** `core/source.js`, `core/parser.js`, `view/renderer.js`
 
@@ -409,12 +409,12 @@ Two things learned while building it, both recorded because they are not obvious
 
 Vendor pdf.js by copying `pdf.mjs` and `pdf.worker.mjs` from a release build into `lib/`. Set the worker path to the packaged file — no CDN (section 9).
 
-**Exit criteria** — none of these have been run yet
+**Exit criteria** — all met in Chrome
 
-- A multi-page PDF renders, scrolls, and text is selectable with the mouse.
-- Works for an intercepted URL, a manually opened URL, and a picked local file.
-- The extension is already useful as a plain PDF viewer.
-- **Watch:** page boxes are sized up front with one `getViewport` call per page, so the scrollbar is correct before anything rasterises. On a 300+ page book this may be slow to open. If it is, assume a uniform page size from page 1 instead of measuring every page.
+- ✅ A multi-page PDF renders, scrolls, and text is selectable with the mouse. The v6 `page.render({ canvas })` call and the `TextLayer` class both behave as written.
+- ✅ Works for an intercepted URL, a manually opened URL, and a picked local file.
+- ✅ The extension is already useful as a plain PDF viewer.
+- ✅ **The watch item did not bite.** Sizing every page up front with one `getViewport` call was not slow enough to notice, so the scrollbar stays honest and the uniform-page-size fallback is not needed. Revisit only if a much larger document turns up.
 
 ---
 
@@ -431,13 +431,13 @@ Two things worth knowing before touching it:
 - **The model imports nothing.** That is not tidiness — it is what let the splitting be run over eight real PDFs in node before Chrome ever saw it. Keep it that way and the next change can be checked the same way.
 - **Word rects are interpolated on character count**, because pdf.js reports no per-glyph advances. Section 4's `rects` array holds one entry per line the word spans, so a hyphen-rejoined word carries both halves.
 
-**Exit criteria** — all met, in node rather than in Chrome
+**Exit criteria** — all met
 
 - ✅ Debug mode: `pdfReader.sentences()`, `pdfReader.sentences(page)` or `pdfReader.sentences(from, to)` from the viewer's devtools console prints a table of id, page, word count and text. It is a console object rather than a URL flag because the interceptor appends the source URL raw, so anything after it reads as part of that URL.
 - ✅ Run against eight structurally different PDFs — two-column papers, single-column books, an OCR'd scan, a report and a résumé.
 - ✅ Failures written down as known limits in 2.6.
 - ✅ Empty extraction detected: `model.hasText()` returned false on a passport scan, and `viewer.js` shows the section 8 notice.
-- ⚠️ **Not yet opened in Chrome.** The model is proven; its three lines of wiring in `viewer.js` are not. Confirm alongside phase 2's criteria.
+- ✅ Confirmed in the viewer: the load line logs page count, document key and sentence count, and `pdfReader.sentences()` prints the same text in Chrome that the node harness produced.
 
 ---
 
