@@ -19,7 +19,7 @@ This document records the design, the measured facts behind it, and what each ph
 | 4 — Audio | **done** | `speech/adapter.js`, `player/controller.js`. Word mapping proved in node (2.7), then playback confirmed in Chrome |
 | 5 — Highlight | **done** | `view/highlighter.js` + an overlay in `view/renderer.js`. Confirmed in Chrome; phase 4's open question answered |
 | 6 — Controls, settings, resume | **done** | `view/controls.js`, `store/settings.js`, wiring in `viewer.*`. Confirmed in Chrome |
-| 7 — Click to read | **built, not yet confirmed in Chrome** | Section 12 item 2. `wordAtPoint` in `core/document-model.js`, `locate` in `view/renderer.js`, wiring in `viewer.js`. Hit test checked in node |
+| 7 — Click to read | **done** | Section 12 item 2. `wordAtPoint` in `core/document-model.js`, `locate` in `view/renderer.js`, wiring in `viewer.js`. Hit test checked in node, then confirmed in Chrome |
 
 **To pick up work:** read section 3 (module map), then section 12 for the candidates. Everything phases 0-6 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
 
@@ -27,9 +27,7 @@ This document records the design, the measured facts behind it, and what each ph
 
 **Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6) before being confirmed in the viewer.
 
-**Phases 0-6 owe the browser nothing.** Each had its exit criteria run in Chrome. One row of section 8 is the exception and is marked as such in that table: a mid-document TTS engine failure cannot be provoked on demand, so its handling is written and reasoned but never seen firing.
-
-**Phase 7 is the outstanding one.** Its hit test was checked in node, the way phase 3's splitting was, but nobody has clicked a word in Chrome yet. Its exit criteria are in section 11 and are the next thing to run.
+**Nothing is owed to the browser.** Every phase has had its exit criteria run in Chrome, phase 7 included. One row of section 8 is the exception and is marked as such in that table: a mid-document TTS engine failure cannot be provoked on demand, so its handling is written and reasoned but never seen firing.
 
 ## 1. What we are building
 
@@ -541,7 +539,7 @@ Three decisions worth knowing, none of them forced by the plan:
 
 ---
 
-### Phase 7 — Click to read ⏳ built, not yet confirmed in Chrome
+### Phase 7 — Click to read ✅ done
 
 The first item taken off section 12, chosen because it needed no new module — item 2 there called it "the largest gain per line of code left on the list," and it was.
 
@@ -562,16 +560,18 @@ Four decisions worth knowing:
 
 **The hit test's rule**, and why it is shaped that way: vertical distance is a **gate** (miss every line by more than 0.7 line heights and the answer is `null`), horizontal distance is a **ranking**. So clicking in a margin, or in the gap between two words, picks the nearest word on that line rather than nothing — but clicking the white space between paragraphs correctly picks nothing. Rects are baseline-anchored, so the few points between one baseline and the next line's ascender are genuinely ambiguous; the nearest line wins there.
 
-**Checked in node** (`scratchpad/hit-test.mjs`, throwaway), on two synthetic lines with exact per-word geometry: word centres, both margins, the gap between words, the band between lines, and four kinds of miss. All behaved as described above.
+**Checked in node first** (`scratchpad/hit-test.mjs`, throwaway), on two synthetic lines with exact per-word geometry: word centres, both margins, the gap between words, the band between lines, and four kinds of miss. All behaved as described above. The same trick as phases 3 and 4 — the model importing nothing keeps paying.
 
-**Exit criteria** — none run yet
+**Exit criteria** — all met, confirmed by hand in Chrome
 
-- Clicking a word starts reading from its sentence, on the page you clicked.
-- Dragging to select text does **not** start playback, and selection still works normally.
-- Clicking on a page that has been drawn but not yet parsed works — scroll well ahead of the reading position, then click.
-- Clicking blank margin, or between paragraphs, does nothing.
-- Clicking while already playing jumps there rather than stacking two voices.
-- Works at a zoom other than 100%, since `locate` goes through the viewport.
+- ✅ Clicking a word starts reading from its sentence, on the page you clicked.
+- ✅ Dragging to select text does **not** start playback, and selection still works normally. The 4 px slop plus the collapsed-selection test was enough; no tuning was needed.
+- ✅ Clicking on a page that has been drawn but not yet parsed works — the `ensurePages` await in the handler covers the gap between rendering being driven by scrolling and the model being driven by playback.
+- ✅ Clicking blank margin, or between paragraphs, does nothing.
+- ✅ Clicking while already playing jumps there rather than stacking two voices. `seek`'s existing stop-and-speak path (section 6) needed no change.
+- ✅ Works at a zoom other than 100%, since `locate` goes through the viewport.
+
+**Nothing had to change after the check.** Like phase 6, it went in as designed — which is what the node pass buys: the geometry was already right before Chrome saw it, so the only things left to be wrong were the DOM-level ones, and they were not.
 
 ---
 
