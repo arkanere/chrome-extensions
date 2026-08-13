@@ -49,6 +49,8 @@ h1 {
   cursor: pointer;
 }
 .tools button:hover { background: var(--bg); }
+.tools button.wide { width: auto; padding: 0 12px; font-size: 13px; }
+.tools button:disabled { color: var(--muted); cursor: default; background: var(--panel); }
 
 #zoom-level { font-size: 12px; color: var(--muted); min-width: 40px; text-align: center; }
 

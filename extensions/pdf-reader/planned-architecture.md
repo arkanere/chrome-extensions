@@ -1,6 +1,6 @@
 # PDF Reader — Architecture
 
-Status: **phases 0-3 built.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, and turns their text into sentences with word geometry. No audio yet — that starts at phase 4.
+Status: **phases 0-4 built, phase 4 not yet confirmed in Chrome.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, and reads them aloud. Nothing is highlighted yet — that is phase 5.
 
 This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
 
@@ -12,15 +12,15 @@ This document records the design, the measured facts behind it, and what each ph
 | 1 — Shell, interception, manual entry | **done** | Redirect fires on `file://` too. `manifest.json`, `background.js`, `viewer.*` |
 | 2 — Render | **done** | pdf.js 6.2.108 vendored. `core/source.js`, `core/parser.js`, `view/renderer.js`. Exit criteria run in Chrome, all passed |
 | 3 — Text model | **done** | `core/document-model.js`. Run against 8 real PDFs outside Chrome, then confirmed in the viewer; open question 4 answered in 2.6 |
-| 4 — Audio | **next** | `speech/adapter.js`, `player/controller.js` |
-| 5 — Highlight | not started | `view/highlighter.js` |
+| 4 — Audio | **built, unconfirmed** | `speech/adapter.js`, `player/controller.js`. Word mapping checked in node; the three audible criteria need Chrome |
+| 5 — Highlight | **next** | `view/highlighter.js` |
 | 6 — Controls, settings, resume | not started | `view/controls.js`, `store/settings.js` |
 
-**To resume:** read section 3 (module map), then section 11's phase 4. Everything phases 0-3 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
+**To resume:** run phase 4's exit criteria in Chrome (they need a reload — `manifest.json` gained the `tts` permission), then read section 3 (module map) and section 11's phase 5. Everything phases 0-3 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
 
 **Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6) before being confirmed in the viewer.
 
-**Nothing is owed to the browser.** Phases 0-3 have all had their exit criteria run in Chrome. The extension is a working PDF viewer today; phase 4 is the first that adds sound.
+**One thing is owed to the browser.** Phases 0-3 have had their exit criteria run in Chrome. Phase 4 has not: its word mapping was proved in node (see 2.7), but "plays end to end without gaps" is a claim about audio and only listening settles it.
 
 ## 1. What we are building
 
@@ -153,6 +153,16 @@ Three things the run changed:
 - **Hyphenated compounds that fall on a line break lose their hyphen.** Rejoining cannot tell `well-known` from `under-\nstand`.
 - **Intra-word gaps in kerned PDFs survive** — `Psycholo gy of New-Pro duc t Adoption`. The item boundaries are where the producer put them.
 - **Word rects interpolate on character count.** pdf.js reports no per-glyph advances, so a word's box drifts a few points inside a proportional font. Phase 5 decides whether that is visible.
+
+### 2.7 Word mapping, proved without Chrome (phase 4)
+
+`player/controller.js` imports nothing either, so the same trick that checked sentence splitting in 2.6 works on the playback loop: hand it a fake model and a fake adapter that behaves like a Natural voice — 8 `start` events, then two `word` events per word, at the word's first character and at the character just past it.
+
+Two sentences, 10 words, one utterance each. The controller emitted **10 word positions, no duplicates, in order**, plus one `wordIndex: -1` per sentence when the utterance starts. So Natural's double boundary events collapse, and `onDone` advances to the next sentence.
+
+The mapping rule that does it: **the last word starting at or before `charIndex`**, then emit only when the index changes. A range test (`start <= i < end`) would have dropped the second event by accident; the last-start-before rule drops it on purpose and also survives the other possible reading of Natural's second event — that it points at the *next* word's start. In that case playback runs one word ahead of the highlight rather than duplicating, which is why 5.1's exit criterion still has to be watched in Chrome.
+
+This settles the third exit criterion only. Gaps, stalls and repeats at sentence boundaries are audible facts and stay unproved until the extension is loaded.
 
 ## 3. Module map
 
@@ -441,20 +451,25 @@ Two things worth knowing before touching it:
 
 ---
 
-### Phase 4 — Audio
+### Phase 4 — Audio ⚠️ built, exit criteria not yet run
 
-**Files:** `speech/adapter.js`, `player/controller.js`
+**Files:** `speech/adapter.js`, `player/controller.js`, plus wiring in `viewer.js`, a play/pause button, and the `tts` permission
 
-- `speech/adapter.js`: the section 5.1 interface over `chrome.tts`. It absorbs all three quirks — latch the first of 8 `onstart` calls, pass `charIndex` through raw, and stamp every event with the utterance **token**. Clamp `rate` to 0.6–2.5. Set `supportsWordEvents: false` for any voice whose `eventTypes` lacks `word`.
+- `speech/adapter.js`: the section 5.1 interface over `chrome.tts`. It absorbs all three quirks — latch the first of 8 `onstart` calls, pass `charIndex` through raw, and stamp every event with the utterance **token**. Clamp `rate` to 0.6–2.5. Set `supportsWordEvents: false` for any voice whose `eventTypes` lacks `word`. Section 7's chain lives here too, as `chooseVoice()`, because it is a fact about voices rather than about the player — phase 6's picker uses the same function.
 - `player/controller.js`: holds the queue and the current `Position`. Speaks one sentence at a time, advances on `onDone`, and drops any event whose token is stale. Pause is stop-and-remember (section 6). Emits `Position` to subscribers.
 
-No UI beyond a play/pause button. No highlighting.
+Four things worth knowing:
+
+- **`chrome.tts` needs the `tts` permission.** Nothing in phases 0-3 required it, so the extension must be reloaded at `chrome://extensions` before any of this runs.
+- **`chooseVoice()` returns `null` when nothing matches**, meaning "let the platform decide" — `chrome.tts` uses its default when `voiceName` is left off. That is section 7's step 3 without having to name a voice that may not exist.
+- **The controller pre-parses the next page** while the current sentence is speaking. Parsing mid-sentence would be heard as a gap. This is text only; audio pre-buffering stays deferred, as section 6 says.
+- **`pdfReader.trace = true`** in the viewer's console logs every `Position`. `pdfReader.voices()` lists what the machine has.
 
 **Exit criteria**
 
-- A document plays end to end without gaps, stalls, or repeats at sentence boundaries.
-- Pause and resume land on the same sentence.
-- `Position` events log correctly, one per word — **verify Natural's double boundary events collapse to one**.
+- ⬜ A document plays end to end without gaps, stalls, or repeats at sentence boundaries.
+- ⬜ Pause and resume land on the same sentence.
+- ✅ `Position` events log correctly, one per word — Natural's double boundary events collapse to one. **Proved in node** (2.7), not yet watched against real audio; if the highlight runs a word ahead in phase 5, 2.7 explains why and what to change.
 
 ---
 
