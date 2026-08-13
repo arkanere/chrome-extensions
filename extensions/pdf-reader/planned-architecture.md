@@ -1,6 +1,8 @@
 # PDF Reader — Architecture
 
-Status: **phases 0-5 done; phase 6 written and awaiting its Chrome check.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, reads them aloud, and highlights each word as it is spoken. Phase 6 adds the controls, the remembered voice, speed and position, and the rest of section 8 — its code is in, its exit criteria have not been run by hand yet.
+Status: **v1 is done. All six phases are built and confirmed in Chrome.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, reads them aloud, highlights each word as it is spoken, and remembers the voice, the speed and where you stopped.
+
+Nothing in the plan is outstanding. Section 12 is the list of what could come next, and none of it is required for daily use.
 
 This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
 
@@ -14,15 +16,15 @@ This document records the design, the measured facts behind it, and what each ph
 | 3 — Text model | **done** | `core/document-model.js`. Run against 8 real PDFs outside Chrome, then confirmed in the viewer; open question 4 answered in 2.6 |
 | 4 — Audio | **done** | `speech/adapter.js`, `player/controller.js`. Word mapping proved in node (2.7), then playback confirmed in Chrome |
 | 5 — Highlight | **done** | `view/highlighter.js` + an overlay in `view/renderer.js`. Confirmed in Chrome; phase 4's open question answered |
-| 6 — Controls, settings, resume | **written, unconfirmed** | `view/controls.js`, `store/settings.js`, wiring in `viewer.*`. Exit criteria not yet run in Chrome |
+| 6 — Controls, settings, resume | **done** | `view/controls.js`, `store/settings.js`, wiring in `viewer.*`. Confirmed in Chrome |
 
-**To resume:** read section 3 (module map), then section 11's phase 6 — its "how it was built" notes are written; what is left is running its exit criteria in Chrome. Everything phases 0-5 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
+**To pick up work:** read section 3 (module map), then section 12 for the candidates. Everything phases 0-6 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
 
-**What phase 6 owes.** Only the hand check. The code went in as planned, with `player/controller` untouched — it already exposed `setVoice`, `setRate`, `next` and `previous`, and already accepted a starting `sentenceId`. What remains is to load the extension and run the exit criteria: reopen a document and see the position, voice and speed come back, and trigger every row of section 8 by hand.
+**Phase 6 needed nothing from `player/controller` or `speech/adapter`.** Both were left untouched: the controller already exposed `setVoice`, `setRate`, `next` and `previous` and already accepted a starting `sentenceId`, and the adapter already exported `rateRange` and `chooseVoice`. Phases 4 and 5 having written those for a picker that did not exist yet is why phase 6 was the smallest phase of the six.
 
 **Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6) before being confirmed in the viewer.
 
-**One thing is owed to the browser.** Phases 0-5 each had their exit criteria run in Chrome. Phase 6's have not — its code is written but unexercised, so treat its notes as intent until the check is done. Nothing in it can stop the extension from reading a PDF aloud: phase 6 makes the reader configurable and resumable rather than making it work.
+**Nothing is owed to the browser.** Every phase has had its exit criteria run in Chrome, phase 6 included. One row of section 8 is the exception and is marked as such in that table: a mid-document TTS engine failure cannot be provoked on demand, so its handling is written and reasoned but never seen firing.
 
 ## 1. What we are building
 
@@ -313,7 +315,7 @@ Voices without word-boundary events are **hidden from the picker** rather than o
 | PDF has no text layer (scanned) | Detect empty extraction, show "no readable text", do not offer playback |
 | `file://` without permission | Show a short explainer with the exact toggle to enable |
 | Voice missing at load | Fall through the chain in section 7, tell the user which voice was used |
-| TTS `onerror` mid-document | Stop, keep position, offer resume |
+| TTS `onerror` mid-document | Stop, keep position, offer resume. **The one row never seen firing** — the engine cannot be made to fail on demand. The path is the same stop-and-remember as pause, and the position is already on disk, so a reload resumes even if the notice were wrong |
 | Very large PDF | Parse text lazily per page; do not build the whole model up front |
 
 ## 9. Decisions taken
@@ -507,7 +509,7 @@ How it fits together:
 
 ---
 
-### Phase 6 — Controls, settings, resume — written, not yet confirmed
+### Phase 6 — Controls, settings, resume ✅ done
 
 **Files:** `view/controls.js`, `store/settings.js`, plus wiring in `viewer.js`, `viewer.html`, `viewer.css`
 
@@ -526,12 +528,32 @@ Three decisions worth knowing, none of them forced by the plan:
 2. **The rate slider commits on `change`, not `input`.** Every commit restarts the current sentence (section 6's stop-and-remember), so committing per drag step would stutter.
 3. **`positions` is capped at 200 entries**, oldest-read dropped first. Not about space — records are tiny — but about a map that would otherwise grow forever with documents opened once.
 
-**Exit criteria** — not yet run
+**Exit criteria** — met, confirmed by hand in Chrome
 
-- Reopening a document restores the last position, voice and rate.
-- Every row of the section 8 table has been triggered by hand and behaves as written.
-- Usable daily.
+- ✅ Reopening a document restores the last position, voice and rate.
+- ✅ Every row of the section 8 table behaves as written, and every row that can be triggered on demand was. The mid-document TTS error is the one exception, marked in that table.
+- ✅ Usable daily. Nothing needed changing after the check — the phase went in as designed.
 
 ---
 
-**Deferred past v1:** pre-buffering sentence N+1 (section 6), OCR, and any sharing of the Define lookup with `reading-mode` (section 9).
+---
+
+## 12. What could come next
+
+v1 is finished and none of this is required. It is written down so a later session can start from a list rather than from memory, roughly in the order it is likely to be worth doing. **Nothing here is committed** — pick from it after using the extension, not before.
+
+**Wait for real use to decide.** These are all fixes to things that may or may not turn out to be annoying:
+
+1. **Running headers and footers merging into the first sentence of a page** (2.6). Named there as the loudest defect: `77:4 Allen Wirfs-Brock and Brendan Eich extensions.` It needs repeated-text detection across pages — a `core/document-model` change, and one that can be checked in node the way phase 3 was, since the model still imports nothing.
+2. **Click a word to read from there.** The text layer is already selectable and every `Word` already has geometry, so this is a hit test plus `player.seek`. Probably the largest gain per line of code left on the list, and it needs no new module.
+3. **Keyboard shortcuts** — space for play/pause, arrows for skip. Deliberately left out of phase 6: space also scrolls, so it needs a decision about focus rather than a `keydown` handler.
+4. **Footnote markers mid-sentence and footnote bodies at the end of a page** (2.6). Harder than headers and less audible.
+
+**Already deferred by the design, with the reasoning in place:**
+
+5. **Pre-buffering sentence N+1** (section 6). The queue was designed not to make this hard. Phase 4 and 5 use did not show a gap worth fixing, so measure before building.
+6. **macOS Premium voices** (open question 2). Untested because none are installed. If they report word events they may be the better default.
+7. **OCR for scanned PDFs** (non-goal). A separate project, not a feature of this one.
+8. **Sharing the Define lookup with `reading-mode`** (section 9). Extract only if it proves valuable here first.
+
+**Where to be careful.** Items 1 and 4 change `core/document-model`, which is the pivot every other module reads through (section 3). Keep it importing nothing — that property is what let phase 3 be checked against eight real PDFs outside Chrome, and it is worth more than any single fix on this list.
