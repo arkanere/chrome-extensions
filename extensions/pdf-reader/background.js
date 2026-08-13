@@ -1,5 +1,5 @@
 // background/interceptor — detect PDF navigation and route it to our viewer.
-// Knows nothing about PDF content, speech or UI (see the module map in planned-architecture.md).
+// Knows nothing about PDF content, speech or UI (see the module map in architecture.md).
 
 const RULE_IDS = [1, 2];
 

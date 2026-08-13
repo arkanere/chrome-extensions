@@ -1,12 +1,12 @@
 # PDF Reader — Architecture
 
-Status: **v1 is done. All six phases are built and confirmed in Chrome.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, reads them aloud, highlights each word as it is spoken, and remembers the voice, the speed and where you stopped.
+Status: **done and in daily use. All eight phases, 0 through 7, are built and confirmed in Chrome.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, reads them aloud, highlights each word as it is spoken, and remembers the voice, the speed and where you stopped.
 
-**Since v1:** phase 7 added click-to-read, the first item taken off section 12.
+Phases 0-6 were v1. **Phase 7 came after it** and added click-to-read, the first item taken off section 12.
 
-Nothing in the plan is outstanding. Section 12 is the list of what could come next, and none of it is required for daily use.
+Nothing in the plan is outstanding. Section 12 is the list of what could come next, and every item on it is marked not required.
 
-This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
+**This is the design document, not the user's one.** [README.md](README.md) says what the extension does and how to install it; this says how it is built, what was measured to justify it, and what each phase actually found. It was written as a plan and kept as a record — every phase's findings are folded back into the design sections, so those can be read as fact rather than intention. Sections 1-9 are the design; section 11 is the phase-by-phase record and the place to pick up work.
 
 ## 0. Where things stand
 

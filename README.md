@@ -10,6 +10,7 @@ so every extension is installed on its own.
 | --- | --- |
 | [`time-check`](extensions/time-check) | Daily time budgets per site, with escalating nags once you're over |
 | [`reading-mode`](extensions/reading-mode) | One-click distraction-free reading view for any article, light/dark, zero UI |
+| [`pdf-reader`](extensions/pdf-reader) | Opens PDFs in its own viewer and reads them aloud with Chrome's local neural voices, highlighting each word |
 
 ## Installing any of them
 
