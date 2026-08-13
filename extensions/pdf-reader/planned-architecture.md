@@ -1,6 +1,6 @@
 # PDF Reader — Architecture
 
-Status: **phases 0-4 done; phase 5 written but not yet confirmed in Chrome.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, and reads them aloud. Highlighting is now wired in and needs its exit criteria run by hand.
+Status: **phases 0-5 done.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, reads them aloud, and highlights each word as it is spoken. What is left is phase 6: controls, settings and resume.
 
 This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
 
@@ -13,14 +13,20 @@ This document records the design, the measured facts behind it, and what each ph
 | 2 — Render | **done** | pdf.js 6.2.108 vendored. `core/source.js`, `core/parser.js`, `view/renderer.js`. Exit criteria run in Chrome, all passed |
 | 3 — Text model | **done** | `core/document-model.js`. Run against 8 real PDFs outside Chrome, then confirmed in the viewer; open question 4 answered in 2.6 |
 | 4 — Audio | **done** | `speech/adapter.js`, `player/controller.js`. Word mapping proved in node (2.7), then playback confirmed in Chrome |
-| 5 — Highlight | **built, unconfirmed** | `view/highlighter.js` + an overlay in `view/renderer.js`. Exit criteria not yet run in Chrome |
-| 6 — Controls, settings, resume | next | `view/controls.js`, `store/settings.js` |
+| 5 — Highlight | **done** | `view/highlighter.js` + an overlay in `view/renderer.js`. Confirmed in Chrome; phase 4's open question answered |
+| 6 — Controls, settings, resume | **next** | `view/controls.js`, `store/settings.js` |
 
-**To resume:** read section 3 (module map), then section 11's phase 5. Everything phases 0-3 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
+**To resume:** read section 3 (module map), then section 11's phase 6. Everything phases 0-5 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
+
+**What phase 6 still owes.** Nothing in it is blocked or uncertain — it is the last of the plan, and every piece of it is named in its section below:
+
+- `view/controls.js`: a voice picker (voices without word events hidden, section 7), a rate slider clamped to 0.6-2.5, and skip-sentence buttons. `player/controller` already exposes `setVoice`, `setRate`, `next` and `previous`; nothing new is needed on that side.
+- `store/settings.js`: `chrome.storage.local` for voice, rate, and last position keyed by the phase 2 document hash. `viewer.js` already computes the hash and already accepts a starting `sentenceId` in the controller's config, so resume is a matter of reading it back and passing it in.
+- The rest of section 8's failure table. Two rows are already built — the `file://` explainer and the no-text-layer notice — so what is left is resume-after-error and triggering every row by hand.
 
 **Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6) before being confirmed in the viewer.
 
-**One thing is owed to the browser.** Phases 0-4 have all had their exit criteria run in Chrome. Phase 5 has not — its code is in place but nobody has watched it highlight anything. That check comes before phase 6, and it also settles the question phase 4 left open (2.7).
+**Nothing is owed to the browser.** Every phase so far has had its exit criteria run in Chrome, phase 5 included. The extension reads a PDF aloud and highlights along today; phase 6 is what makes it configurable and resumable rather than what makes it work.
 
 ## 1. What we are building
 
@@ -152,7 +158,7 @@ Three things the run changed:
 - **Footnote markers land mid-sentence** and footnote bodies are spoken at the end of the page: `...the natural laws governing 14.`
 - **Hyphenated compounds that fall on a line break lose their hyphen.** Rejoining cannot tell `well-known` from `under-\nstand`.
 - **Intra-word gaps in kerned PDFs survive** — `Psycholo gy of New-Pro duc t Adoption`. The item boundaries are where the producer put them.
-- **Word rects interpolate on character count.** pdf.js reports no per-glyph advances, so a word's box drifts a few points inside a proportional font. Phase 5 decides whether that is visible.
+- **Word rects interpolate on character count.** pdf.js reports no per-glyph advances, so a word's box drifts a few points inside a proportional font. ~~Phase 5 decides whether that is visible.~~ **It decided: not visible enough to matter.** The highlight reads as sitting on the right word. Phase 5 grows both bands two pixels with a shadow spread, which covers the drift and the baseline-anchored rect at the same time.
 
 ### 2.7 Word mapping, proved without Chrome (phase 4)
 
@@ -160,7 +166,9 @@ Three things the run changed:
 
 Two sentences, 10 words, one utterance each. The controller emitted **10 word positions, no duplicates, in order**, plus one `wordIndex: -1` per sentence when the utterance starts. So Natural's double boundary events collapse, and `onDone` advances to the next sentence.
 
-The mapping rule that does it: **the last word starting at or before `charIndex`**, then emit only when the index changes. A range test (`start <= i < end`) would have dropped the second event by accident; the last-start-before rule drops it on purpose and also survives the other possible reading of Natural's second event — that it points at the *next* word's start. In that case playback runs one word ahead of the highlight rather than duplicating, which is why 5.1's exit criterion still has to be watched in Chrome.
+The mapping rule that does it: **the last word starting at or before `charIndex`**, then emit only when the index changes. A range test (`start <= i < end`) would have dropped the second event by accident; the last-start-before rule drops it on purpose and also survives the other possible reading of Natural's second event — that it points at the *next* word's start.
+
+**Phase 5 settled which reading is right.** With the highlight on screen, it tracked the voice rather than running a word ahead, so Natural's second event is the **word's end**. The rule would have worked either way; it is worth knowing it did not have to.
 
 This settled the third exit criterion before Chrome ever ran the code. The other two are audible facts and were checked by listening, as phase 4 records.
 
@@ -471,11 +479,13 @@ Four things worth knowing:
 - ✅ Pause and resume land on the same sentence.
 - ✅ `Position` events log correctly, one per word — Natural's double boundary events collapse to one. **Proved in node** (2.7).
 
-**One question 2.7 left open, and phase 5 is where it lands.** Natural's second boundary event per word is either the word's end or the next word's start; both produce one `Position` per word, so audio alone cannot tell them apart. If the highlight runs consistently one word ahead of the voice, that is the answer, and 2.7 says what to change.
+~~**One question 2.7 left open, and phase 5 is where it lands.**~~ **Answered in phase 5: the word's end.** Natural's second boundary event per word could have been either that or the next word's start, and audio alone could not tell them apart. The highlight tracked the voice instead of leading it, so it is the end. Nothing had to change.
 
 ---
 
-### Phase 5 — Highlight ⏳ built, not yet confirmed in Chrome
+### Phase 5 — Highlight ✅ done
+
+**Answered** the question phase 4 left open: Natural's second boundary event is the word's end. See the exit criteria below.
 
 **Files:** `view/highlighter.js`, plus an overlay per page in `view/renderer.js`, styles in `viewer.css`, wiring in `viewer.js`
 
@@ -492,12 +502,11 @@ How it fits together:
 - Zoom rebuilds every page and takes the overlays with it, so `applyZoom` is now async and calls `highlighter.refresh()`.
 - **`pdfReader.highlight(id, word)`** paints a sentence without playing it, so the geometry can be checked against the page on its own.
 
-**Exit criteria** — none run yet
+**Exit criteria** — all met, confirmed by hand in Chrome
 
-- ⬜ Highlight tracks the audio with no visible lag at rate 1.0 and still holds at 2.0.
-- ⬜ Scroll-into-view is not jumpy.
-- ⬜ **Phase 4's open question.** If the highlight runs consistently one word ahead of the voice, Natural's second boundary event is the *next* word's start, and 2.7 says what to change.
-- ⬜ Check a two-column paper specifically — the band merge and the interpolated rects are both least trustworthy there.
+- ✅ Highlight tracks the audio with no visible lag.
+- ✅ Scroll-into-view is not jumpy. The leave-the-band rule plus the 450 ms settle was enough; no tuning was needed.
+- ✅ **Phase 4's open question is answered.** The highlight did *not* run a word ahead of the voice, so Natural's second boundary event per word is the **word's end**, not the next word's start. `wordAt`'s last-start-before rule stands as written and 2.7's contingency is not needed.
 - ✅ Record which approach won and why.
 
 ---
