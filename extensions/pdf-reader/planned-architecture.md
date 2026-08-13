@@ -1,6 +1,6 @@
 # PDF Reader — Architecture
 
-Status: **phases 0-4 done.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, and reads them aloud. Nothing is highlighted yet — that is phase 5.
+Status: **phases 0-4 done; phase 5 written but not yet confirmed in Chrome.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, and reads them aloud. Highlighting is now wired in and needs its exit criteria run by hand.
 
 This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
 
@@ -13,14 +13,14 @@ This document records the design, the measured facts behind it, and what each ph
 | 2 — Render | **done** | pdf.js 6.2.108 vendored. `core/source.js`, `core/parser.js`, `view/renderer.js`. Exit criteria run in Chrome, all passed |
 | 3 — Text model | **done** | `core/document-model.js`. Run against 8 real PDFs outside Chrome, then confirmed in the viewer; open question 4 answered in 2.6 |
 | 4 — Audio | **done** | `speech/adapter.js`, `player/controller.js`. Word mapping proved in node (2.7), then playback confirmed in Chrome |
-| 5 — Highlight | **next** | `view/highlighter.js` |
-| 6 — Controls, settings, resume | not started | `view/controls.js`, `store/settings.js` |
+| 5 — Highlight | **built, unconfirmed** | `view/highlighter.js` + an overlay in `view/renderer.js`. Exit criteria not yet run in Chrome |
+| 6 — Controls, settings, resume | next | `view/controls.js`, `store/settings.js` |
 
 **To resume:** read section 3 (module map), then section 11's phase 5. Everything phases 0-3 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
 
 **Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6) before being confirmed in the viewer.
 
-**Nothing is owed to the browser.** Phases 0-4 have all had their exit criteria run in Chrome. The extension reads PDFs aloud today; phase 5 is the first that puts anything on the screen in sync with the audio.
+**One thing is owed to the browser.** Phases 0-4 have all had their exit criteria run in Chrome. Phase 5 has not — its code is in place but nobody has watched it highlight anything. That check comes before phase 6, and it also settles the question phase 4 left open (2.7).
 
 ## 1. What we are building
 
@@ -322,7 +322,7 @@ Voices without word-boundary events are **hidden from the picker** rather than o
 
 **Build on `chrome.tts`, not `speechSynthesis`.** No user-activation gate, and it is the extension-native API.
 
-**Highlight via pdf.js text layer, not a custom canvas overlay.** pdf.js already positions invisible text spans over the canvas for selection. Reusing them gives correct geometry for free. *Low confidence* — this may not survive contact with multi-column layouts, where model sentences will cross span boundaries. If it fails, fall back to drawing `Word.rects` on an overlay canvas. The `Position` seam means only the highlighter changes.
+**~~Highlight via pdf.js text layer~~ → overlay from `Word.rects`.** The plan was to reuse pdf.js's invisible selection spans for free geometry. *Reversed in phase 5, and not for the reason expected.* A `Word` keeps no link to the span it came from, so the span route needed provenance added to `core/document-model` — a phase 3 change in service of phase 5. `Word.rects` was already there. The multi-column doubt that made this low confidence never got to decide it. The `Position` seam held: only `view/highlighter.js` and a per-page overlay in the renderer were involved.
 
 ## 10. Open questions and current stance
 
@@ -475,19 +475,30 @@ Four things worth knowing:
 
 ---
 
-### Phase 5 — Highlight
+### Phase 5 — Highlight ⏳ built, not yet confirmed in Chrome
 
-**Files:** `view/highlighter.js`
+**Files:** `view/highlighter.js`, plus an overlay per page in `view/renderer.js`, styles in `viewer.css`, wiring in `viewer.js`
 
-Subscribes to `Position`. Paints the current word strongly and the enclosing sentence faintly. Scrolls the page when the position moves off screen.
+**The text layer lost, before it was tried.** Section 9 wanted the pdf.js spans first. That route needs a link from a `Word` back to the span it came from, and the model has none: `tokensFromItem` drops the item index, and hyphen-rejoining merges tokens across items. Using spans would have meant adding provenance to `core/document-model` — a phase 3 change to serve a phase 5 need. `Word.rects` already exists for exactly this, so **the overlay won on cost, not on geometry**. Section 9's multi-column worry never got to be the deciding factor.
 
-First attempt is the pdf.js text layer (section 9). If model sentences cross span boundaries and the geometry breaks — likely on multi-column pages — fall back to drawing `Word.rects` on an overlay canvas, converting page coordinates using the current zoom. Only this file changes either way.
+How it fits together:
 
-**Exit criteria**
+- `view/renderer` gains a `.highlight-layer` div per page, between the canvas and the text layer, and two calls: `overlay(page)` and `toPixels(page, rect)`. The conversion lives there because it uses the pdf.js viewport, which nothing above `core/parser` and `view/renderer` may see. It converts **both corners** of a rect rather than multiplying by the scale, so a rotated page stays correct.
+- Every slot gets its viewport in `buildSlots`, before anything rasterises, so a sentence on a page that has not been drawn yet still highlights.
+- `view/highlighter` takes a `Sentence` and a word index — not a `Position`. `viewer.js` does the `model.sentence(id)` lookup, which keeps the section 5.2 seam as narrow as it was and the highlighter free of the model.
+- The sentence is drawn as **one band per line**, merged only against the most recent band. Words arrive in reading order, so that joins a line correctly and, on a two-column page, stops the two columns — which sit at the same height — from merging into one band across the gutter.
+- Both bands are grown two pixels with a `box-shadow` spread. 2.6's rects are interpolated on character count and sit on the baseline, so a tight box clips descenders.
+- Scroll-into-view fires **only when the word has left the band** between the header and the bottom margin, and then not again for 450 ms. Following every word would scroll on every event; re-measuring during a smooth scroll would see the old position and issue a second one.
+- Zoom rebuilds every page and takes the overlays with it, so `applyZoom` is now async and calls `highlighter.refresh()`.
+- **`pdfReader.highlight(id, word)`** paints a sentence without playing it, so the geometry can be checked against the page on its own.
 
-- Highlight tracks the audio with no visible lag at rate 1.0 and still holds at 2.0.
-- Scroll-into-view is not jumpy.
-- Record which approach won and why.
+**Exit criteria** — none run yet
+
+- ⬜ Highlight tracks the audio with no visible lag at rate 1.0 and still holds at 2.0.
+- ⬜ Scroll-into-view is not jumpy.
+- ⬜ **Phase 4's open question.** If the highlight runs consistently one word ahead of the voice, Natural's second boundary event is the *next* word's start, and 2.7 says what to change.
+- ⬜ Check a two-column paper specifically — the band merge and the interpolated rects are both least trustworthy there.
+- ✅ Record which approach won and why.
 
 ---
 

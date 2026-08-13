@@ -60,22 +60,50 @@ export function create(container) {
       el.style.height = `${Math.floor(viewport.height)}px`;
 
       const canvas = document.createElement("canvas");
+      // Sits between the canvas and the (transparent) text layer, so a highlight
+      // painted here shows through without covering the selectable spans.
+      const highlight = document.createElement("div");
+      highlight.className = "highlight-layer";
       const text = document.createElement("div");
       text.className = "text-layer";
 
-      el.append(canvas, text);
+      el.append(canvas, highlight, text);
       container.append(el);
 
-      slots.set(n, { page: n, el, canvas, text, started: false });
+      slots.set(n, { page: n, el, canvas, highlight, text, viewport, started: false });
       observer.observe(el);
     }
   }
 
+  // Every slot gets its viewport in buildSlots, before anything has rasterised,
+  // so the two calls below work on pages that are still blank.
   return {
     async load(loadedParser) {
       parser = loadedParser;
       reset();
       await buildSlots();
+    },
+
+    // The element a highlight for this page should be drawn into, and the page
+    // element it is positioned against.
+    overlay: (page) => slots.get(page)?.highlight ?? null,
+    pageElement: (page) => slots.get(page)?.el ?? null,
+
+    // PDF page coordinates (origin bottom-left, y up, unscaled) → pixels inside
+    // the page element. Converting both corners rather than scaling by hand
+    // keeps rotated pages correct, and keeps pdf.js viewport types in this file.
+    toPixels(page, rect) {
+      const slot = slots.get(page);
+      if (!slot) return null;
+
+      const [x1, y1] = slot.viewport.convertToViewportPoint(rect.x, rect.y + rect.height);
+      const [x2, y2] = slot.viewport.convertToViewportPoint(rect.x + rect.width, rect.y);
+      return {
+        left: Math.min(x1, x2),
+        top: Math.min(y1, y2),
+        width: Math.abs(x2 - x1),
+        height: Math.abs(y2 - y1),
+      };
     },
 
     get scale() {

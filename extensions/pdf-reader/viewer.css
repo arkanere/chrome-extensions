@@ -87,6 +87,35 @@ main {
 .page.failed { outline: 2px solid #c62828; }
 .page canvas { display: block; }
 
+/* Phase 5's highlight, drawn from Word.rects. Sits under the text layer so the
+   selectable spans stay clickable and the canvas glyphs show through. */
+.highlight-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.highlight-layer div {
+  position: absolute;
+  border-radius: 3px;
+}
+
+/* Rects are interpolated on character count (2.6) and sit on the baseline, so
+   both bands are grown a couple of pixels with a shadow spread rather than
+   allowed to clip a descender. Spread grows the paint without touching the
+   measured box. */
+.hl-sentence {
+  background: rgba(255, 214, 102, 0.34);
+  box-shadow: 0 0 0 2px rgba(255, 214, 102, 0.34);
+}
+
+.hl-word {
+  background: rgba(255, 165, 38, 0.6);
+  box-shadow: 0 0 0 2px rgba(255, 165, 38, 0.6);
+}
+
 /* pdf.js text layer: invisible spans positioned over the canvas. They give us
    native selection now and, in phase 5, highlight geometry for free. */
 .text-layer {

@@ -4,6 +4,7 @@ import * as source from "./core/source.js";
 import * as parser from "./core/parser.js";
 import * as documentModel from "./core/document-model.js";
 import * as rendererFactory from "./view/renderer.js";
+import * as highlighterFactory from "./view/highlighter.js";
 import * as speechAdapter from "./speech/adapter.js";
 import * as playerFactory from "./player/controller.js";
 
@@ -11,6 +12,7 @@ const titleEl = document.getElementById("title");
 const noticeEl = document.getElementById("notice");
 const playEl = document.getElementById("play");
 const renderer = rendererFactory.create(document.getElementById("pages"));
+const highlighter = highlighterFactory.create(renderer);
 const speech = speechAdapter.create();
 
 const ZOOM_STEPS = [0.75, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0, 2.5];
@@ -55,8 +57,12 @@ function startPlayer() {
   player.onState(setPlayLabel);
   player.onEnd(() => notice("Reached the end of the document."));
   player.onError((message) => notice(`Speech stopped: ${message}. Press play to resume.`, true));
+  // The Position seam (section 5.2): the controller reports where it is, the
+  // viewer looks the sentence up, and the highlighter draws it. Neither side
+  // knows the other.
   player.onPosition((position) => {
     if (window.pdfReader.trace) console.log("[pdf-reader] position", position);
+    highlighter.show(model.sentence(position.sentenceId), position.wordIndex);
   });
 
   playEl.disabled = false;
@@ -69,6 +75,7 @@ async function show(doc) {
   clearNotice();
 
   if (player) player.pause();
+  highlighter.clear();
   playEl.disabled = true;
 
   const parsed = await parser.open(doc.bytes);
@@ -123,9 +130,12 @@ playEl.addEventListener("click", () => {
   player.toggle();
 });
 
-function applyZoom() {
+// setScale rebuilds every page, which throws the overlays away with them, so the
+// highlight has to be asked for again at the new scale.
+async function applyZoom() {
   document.getElementById("zoom-level").textContent = `${Math.round(ZOOM_STEPS[zoomIndex] * 100)}%`;
-  renderer.setScale(ZOOM_STEPS[zoomIndex]);
+  await renderer.setScale(ZOOM_STEPS[zoomIndex]);
+  highlighter.refresh();
 }
 
 document.getElementById("zoom-in").addEventListener("click", () => {
@@ -153,6 +163,18 @@ window.pdfReader = {
   // check that Natural's two boundary events per word collapse into one.
   trace: false,
   voices: () => speech.listVoices(),
+
+  // pdfReader.highlight(id, word) — paint a sentence without playing it, to
+  // check the phase 5 geometry against the page on its own.
+  async highlight(sentenceId, wordIndex = 0) {
+    if (!model) return console.warn("[pdf-reader] no document loaded");
+    while (sentenceId >= model.sentences.length && model.parsedPages < model.pageCount) {
+      await model.ensurePages(model.parsedPages + 1);
+    }
+    const sentence = model.sentence(sentenceId);
+    if (sentence) highlighter.show(sentence, wordIndex);
+    return sentence;
+  },
 
   // pdfReader.sentences()      — every page parsed so far
   // pdfReader.sentences(12)    — page 12, parsing up to it first
