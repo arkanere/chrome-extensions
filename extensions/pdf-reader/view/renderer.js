@@ -106,6 +106,20 @@ export function create(container) {
       };
     },
 
+    // The inverse of toPixels, for click-to-read: a point in viewport pixels →
+    // { page, x, y } in PDF page coordinates, or null if it missed every page.
+    // The page lookup goes through elementFromPoint rather than measuring every
+    // slot, so a 700-page document costs the same as a short one.
+    locate(clientX, clientY) {
+      const el = document.elementFromPoint(clientX, clientY)?.closest(".page");
+      const slot = el && slots.get(Number(el.dataset.page));
+      if (!slot) return null;
+
+      const box = slot.el.getBoundingClientRect();
+      const [x, y] = slot.viewport.convertToPdfPoint(clientX - box.left, clientY - box.top);
+      return { page: slot.page, x, y };
+    },
+
     get scale() {
       return scale;
     },

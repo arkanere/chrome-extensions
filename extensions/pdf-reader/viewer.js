@@ -12,7 +12,8 @@ import * as settings from "./store/settings.js";
 
 const titleEl = document.getElementById("title");
 const noticeEl = document.getElementById("notice");
-const renderer = rendererFactory.create(document.getElementById("pages"));
+const pagesEl = document.getElementById("pages");
+const renderer = rendererFactory.create(pagesEl);
 const highlighter = highlighterFactory.create(renderer);
 const speech = speechAdapter.create();
 
@@ -218,6 +219,47 @@ noticeEl.addEventListener("click", (e) => {
   clearNotice();
   if (doc) settings.clearPosition(doc.key);
   if (player) player.seek(0);
+});
+
+// Click a word to read from there. A hit test over the geometry every Word
+// already carries plus player.seek, so no new module and no model change beyond
+// the lookup itself.
+//
+// It has to share the page with text selection, which the pdf.js text layer
+// gives us for free. A click that moved between press and release, or that ends
+// with text selected, is the user selecting — not asking to be read to.
+const DRAG_SLOP = 4;
+let pressedAt = null;
+
+pagesEl.addEventListener("pointerdown", (e) => {
+  pressedAt = { x: e.clientX, y: e.clientY };
+});
+
+pagesEl.addEventListener("click", async (e) => {
+  const down = pressedAt;
+  pressedAt = null;
+
+  if (!player || !down) return;
+  if (Math.abs(e.clientX - down.x) > DRAG_SLOP || Math.abs(e.clientY - down.y) > DRAG_SLOP) return;
+  if (!(window.getSelection()?.isCollapsed ?? true)) return;
+
+  const point = renderer.locate(e.clientX, e.clientY);
+  if (!point) return;
+
+  // A page can be drawn long before it is parsed — rendering is driven by
+  // scrolling, the model by playback — so the click may be the first thing that
+  // needs this page's sentences.
+  await model.ensurePages(point.page);
+  const hit = model.wordAtPoint(point.page, point.x, point.y);
+  if (!hit) return;
+
+  // Seeking is by sentence, not by word: the adapter speaks whole Sentence.text,
+  // and starting mid-string would break the charIndex mapping in the controller.
+  // Sentences are short (2.6: a 17-22 word median), so the clicked word is only
+  // ever a moment away.
+  clearNotice();
+  await player.seek(hit.sentenceId);
+  if (!player.playing) await player.play();
 });
 
 // chrome.tts speaks at the extension level, not the page's, so closing the tab

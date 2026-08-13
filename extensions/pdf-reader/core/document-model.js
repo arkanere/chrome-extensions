@@ -220,6 +220,20 @@ function sentencesFromPage(items, page, firstId) {
   return sentences;
 }
 
+// How far off a word's box a click may land and still count as that word,
+// measured in line heights. Vertically it is a gate: miss every line by more
+// than this and the click was on blank paper, not on text. Horizontally it is
+// generous on purpose, so clicking in a margin or in the gap between two words
+// picks the nearest word on that line rather than nothing.
+const HIT_LINE_SLACK = 0.7;
+const HIT_SIDE_SLACK = 8;
+
+// Distance from a point to a rect, per axis, zero when the point is inside.
+// Rects are baseline-anchored and extend upwards by height (see geometry()).
+function gap(low, high, value) {
+  return Math.max(low - value, 0, value - high);
+}
+
 // The model itself. Pages are parsed strictly in order and only on demand, so a
 // Sentence.id never shifts once assigned and a 700-page book does not have to be
 // read up front.
@@ -259,6 +273,41 @@ export function create(parser) {
     ensurePages,
     ensureAll: () => ensurePages(parser.pageCount),
     sentencesOnPage: (page) => sentences.filter((s) => s.page === page),
+
+    // Click-to-read's hit test. A point in PDF page coordinates → the word under
+    // it, as { sentenceId, wordIndex, word }, or null on blank paper. Pure
+    // arithmetic over the rects every Word already carries, so this file still
+    // imports nothing and still runs in node.
+    //
+    // The page must already be parsed; the caller does that, because awaiting
+    // here would make a lookup look cheaper than it is.
+    wordAtPoint(page, x, y) {
+      let best = null;
+
+      for (const sentence of sentences) {
+        if (sentence.page !== page) continue;
+
+        for (let i = 0; i < sentence.words.length; i++) {
+          for (const rect of sentence.words[i].rects) {
+            const dy = gap(rect.y, rect.y + rect.height, y);
+            if (dy > rect.height * HIT_LINE_SLACK) continue; // a different line
+
+            const dx = gap(rect.x, rect.x + rect.width, x);
+            if (dx > rect.height * HIT_SIDE_SLACK) continue; // too far along the line
+
+            // Vertical distance is already inside one line, so the horizontal
+            // one decides between words on that line.
+            const score = dx + dy;
+            if (!best || score < best.score) {
+              best = { score, sentenceId: sentence.id, wordIndex: i, word: sentence.words[i] };
+            }
+          }
+        }
+      }
+
+      if (!best) return null;
+      return { sentenceId: best.sentenceId, wordIndex: best.wordIndex, word: best.word };
+    },
 
     // Section 8's scanned-PDF case: a document whose first pages yield no words
     // has no text layer, so playback must not be offered. Looks past page 1

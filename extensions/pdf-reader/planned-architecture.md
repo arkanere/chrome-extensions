@@ -2,6 +2,8 @@
 
 Status: **v1 is done. All six phases are built and confirmed in Chrome.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, reads them aloud, highlights each word as it is spoken, and remembers the voice, the speed and where you stopped.
 
+**Since v1:** phase 7 added click-to-read, the first item taken off section 12.
+
 Nothing in the plan is outstanding. Section 12 is the list of what could come next, and none of it is required for daily use.
 
 This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
@@ -17,6 +19,7 @@ This document records the design, the measured facts behind it, and what each ph
 | 4 — Audio | **done** | `speech/adapter.js`, `player/controller.js`. Word mapping proved in node (2.7), then playback confirmed in Chrome |
 | 5 — Highlight | **done** | `view/highlighter.js` + an overlay in `view/renderer.js`. Confirmed in Chrome; phase 4's open question answered |
 | 6 — Controls, settings, resume | **done** | `view/controls.js`, `store/settings.js`, wiring in `viewer.*`. Confirmed in Chrome |
+| 7 — Click to read | **built, not yet confirmed in Chrome** | Section 12 item 2. `wordAtPoint` in `core/document-model.js`, `locate` in `view/renderer.js`, wiring in `viewer.js`. Hit test checked in node |
 
 **To pick up work:** read section 3 (module map), then section 12 for the candidates. Everything phases 0-6 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
 
@@ -24,7 +27,9 @@ This document records the design, the measured facts behind it, and what each ph
 
 **Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6) before being confirmed in the viewer.
 
-**Nothing is owed to the browser.** Every phase has had its exit criteria run in Chrome, phase 6 included. One row of section 8 is the exception and is marked as such in that table: a mid-document TTS engine failure cannot be provoked on demand, so its handling is written and reasoned but never seen firing.
+**Phases 0-6 owe the browser nothing.** Each had its exit criteria run in Chrome. One row of section 8 is the exception and is marked as such in that table: a mid-document TTS engine failure cannot be provoked on demand, so its handling is written and reasoned but never seen firing.
+
+**Phase 7 is the outstanding one.** Its hit test was checked in node, the way phase 3's splitting was, but nobody has clicked a word in Chrome yet. Its exit criteria are in section 11 and are the next thing to run.
 
 ## 1. What we are building
 
@@ -536,6 +541,40 @@ Three decisions worth knowing, none of them forced by the plan:
 
 ---
 
+### Phase 7 — Click to read ⏳ built, not yet confirmed in Chrome
+
+The first item taken off section 12, chosen because it needed no new module — item 2 there called it "the largest gain per line of code left on the list," and it was.
+
+**Files:** `core/document-model.js` (`wordAtPoint`), `view/renderer.js` (`locate`), wiring in `viewer.js`
+
+Three additions, one per layer, each on the seam that layer already owns:
+
+- **`model.wordAtPoint(page, x, y)`** — a point in PDF page coordinates becomes `{ sentenceId, wordIndex, word }`, or `null` on blank paper. Pure arithmetic over the rects every `Word` already carries, so **the model still imports nothing** and still runs in node. It does not parse: the caller awaits `ensurePages` first, because awaiting inside a lookup would make it look cheaper than it is.
+- **`renderer.locate(clientX, clientY)`** — the inverse of phase 5's `toPixels`. It belongs here for the same reason `toPixels` does: it uses the pdf.js viewport, which nothing above `core/parser` and `view/renderer` may see. The page is found with `elementFromPoint().closest(".page")` rather than by measuring every slot, so a 700-page document costs the same as a short one.
+- **`viewer.js`** joins the two and calls `player.seek`. No new arrow in the module map — the parts that already talked to each other simply do it in one more direction.
+
+Four decisions worth knowing:
+
+1. **Seeking is by sentence, not by word.** The adapter speaks a whole `Sentence.text`, and starting mid-string would break the `charIndex` → word mapping the controller depends on. 2.6's 17-22 word median means the clicked word is only ever a moment away, so the simple thing is also the barely-worse thing.
+2. **A click both reads and selects, so the two have to be told apart.** A click that moved more than 4 px between press and release, or that ends with a non-collapsed selection, is the user selecting text and is ignored. Text selection is why the pdf.js text layer exists (phase 2); losing it to gain click-to-read would be a bad trade.
+3. **Clicking plays, it does not only move the cursor.** `seek` is followed by `play` if nothing is speaking. "Read from here" is the feature; requiring a second press on play would make it "move the highlight." A mis-click costs one press of pause.
+4. **The cursor stays `text` over the page.** Switching it to `pointer` would advertise clicking at the cost of hiding that the text is selectable. Discoverability of click-to-read is the thing to watch in real use.
+
+**The hit test's rule**, and why it is shaped that way: vertical distance is a **gate** (miss every line by more than 0.7 line heights and the answer is `null`), horizontal distance is a **ranking**. So clicking in a margin, or in the gap between two words, picks the nearest word on that line rather than nothing — but clicking the white space between paragraphs correctly picks nothing. Rects are baseline-anchored, so the few points between one baseline and the next line's ascender are genuinely ambiguous; the nearest line wins there.
+
+**Checked in node** (`scratchpad/hit-test.mjs`, throwaway), on two synthetic lines with exact per-word geometry: word centres, both margins, the gap between words, the band between lines, and four kinds of miss. All behaved as described above.
+
+**Exit criteria** — none run yet
+
+- Clicking a word starts reading from its sentence, on the page you clicked.
+- Dragging to select text does **not** start playback, and selection still works normally.
+- Clicking on a page that has been drawn but not yet parsed works — scroll well ahead of the reading position, then click.
+- Clicking blank margin, or between paragraphs, does nothing.
+- Clicking while already playing jumps there rather than stacking two voices.
+- Works at a zoom other than 100%, since `locate` goes through the viewport.
+
+---
+
 ---
 
 ## 12. What could come next
@@ -545,7 +584,7 @@ v1 is finished and none of this is required. It is written down so a later sessi
 **Wait for real use to decide.** These are all fixes to things that may or may not turn out to be annoying:
 
 1. **Running headers and footers merging into the first sentence of a page** (2.6). Named there as the loudest defect: `77:4 Allen Wirfs-Brock and Brendan Eich extensions.` It needs repeated-text detection across pages — a `core/document-model` change, and one that can be checked in node the way phase 3 was, since the model still imports nothing.
-2. **Click a word to read from there.** The text layer is already selectable and every `Word` already has geometry, so this is a hit test plus `player.seek`. Probably the largest gain per line of code left on the list, and it needs no new module.
+2. ~~**Click a word to read from there.**~~ **Done — phase 7.** It was what the entry said it was: a hit test plus `player.seek`, no new module. What the entry did not anticipate is that the hard part is sharing the click with text selection, not the geometry.
 3. **Keyboard shortcuts** — space for play/pause, arrows for skip. Deliberately left out of phase 6: space also scrolls, so it needs a decision about focus rather than a `keydown` handler.
 4. **Footnote markers mid-sentence and footnote bodies at the end of a page** (2.6). Harder than headers and less audible.
 
