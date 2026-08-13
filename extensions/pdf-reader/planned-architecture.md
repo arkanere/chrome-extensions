@@ -1,6 +1,6 @@
 # PDF Reader — Architecture
 
-Status: **phases 0-2 built and working.** The extension intercepts PDFs, opens them in its own viewer and renders them with a selectable text layer. No audio yet — that starts at phase 4.
+Status: **phases 0-3 built.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, and turns their text into sentences with word geometry. No audio yet — that starts at phase 4.
 
 This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
 
@@ -10,15 +10,17 @@ This document records the design, the measured facts behind it, and what each ph
 |---|---|---|
 | 0 — Voice probe | **done** | `chrome.tts` exposes 7 local `(Natural)` voices with word events. Findings in 2.5 |
 | 1 — Shell, interception, manual entry | **done** | Redirect fires on `file://` too. `manifest.json`, `background.js`, `viewer.*` |
-| 2 — Render | **built, unconfirmed** | pdf.js 6.2.108 vendored. `core/source.js`, `core/parser.js`, `view/renderer.js`. Written and syntax-checked but **not yet opened in a browser** — run its exit criteria before building on it |
-| 3 — Text model | **next** | `core/document-model.js`. The largest unknown — see open question 4 |
-| 4 — Audio | not started | `speech/adapter.js`, `player/controller.js` |
+| 2 — Render | **built, unconfirmed** | pdf.js 6.2.108 vendored. `core/source.js`, `core/parser.js`, `view/renderer.js`. Written and syntax-checked but **not yet opened in a browser** — run its exit criteria before trusting the rendering half |
+| 3 — Text model | **done** | `core/document-model.js`. Run against 8 real PDFs outside Chrome; open question 4 answered in 2.6 |
+| 4 — Audio | **next** | `speech/adapter.js`, `player/controller.js` |
 | 5 — Highlight | not started | `view/highlighter.js` |
 | 6 — Controls, settings, resume | not started | `view/controls.js`, `store/settings.js` |
 
-**To resume:** read section 3 (module map), then section 11's phase 3. Everything phases 0-2 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
+**To resume:** read section 3 (module map), then section 11's phase 4. Everything phases 0-3 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
 
-**Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist.
+**Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6).
+
+**Two things still owed to the browser:** phase 2's exit criteria have never been run, and phase 3's model has only been exercised in node — its wiring in `viewer.js` is unopened. Both are one session at `chrome://extensions` away.
 
 ## 1. What we are building
 
@@ -118,6 +120,39 @@ What this changes:
 2. **`eventTypes` is trustworthy.** Every remote voice omits `word`; every local one declares it. So `VoiceInfo.supportsWordEvents` is just `eventTypes.includes("word")` — no probing speak needed to build the picker.
 3. **Startup latency is less alarming than 2.3 suggested.** The 3001 ms paragraph figure did not reproduce: 1329 ms for a comparable block, and the second Rishi run came back in 9 ms, so part of what 2.3 measured was engine warm-up rather than per-utterance cost. Sentence chunking is still right — 771 ms for one sentence is too long to sit through at a document boundary — but pre-buffering (section 6) matters more than the raw numbers implied. Still deferred, still worth measuring in phase 4.
 4. **The `pause`/`resume` event types on macOS voices are not a reason to use `chrome.tts.pause()`.** Natural voices do not offer them, and section 6's stop-and-remember keeps one code path across both families.
+
+### 2.6 Measured sentence splitting (phase 3)
+
+`core/document-model.js` imports nothing — it is handed an item array and reads only `str`, `transform`, `width`, `height` and `hasEOL`. That made it runnable in plain node against real documents, which is how the numbers below were produced. The harness is throwaway; it used the `pdfjs-dist` **legacy** build, because the vendored browser build of pdf.js will not load outside a browser.
+
+Eight documents, first 25 pages of each:
+
+| Document | Sentences | Words | Median | Rejoined hyphens |
+|---|---|---|---|---|
+| HBR article, 2-column | 260 | 5,069 | 19 w | 136 |
+| ACM paper, 2-column, heavy footnotes | 747 | 14,196 | 18 w | 13 |
+| Simon, *Sciences of the Artificial* | 297 | 6,624 | 21 w | 0 |
+| Gabriel, *Patterns of Software* | 388 | 8,365 | 21 w | 96 |
+| McLuhan, *Understanding Media* (OCR) | 329 | 6,985 | 20 w | 2 |
+| Deloitte report, mixed layout | 366 | 7,502 | 20 w | 5 |
+| Passport scan | **0** | 0 | — | 0 |
+| Résumé | 27 | 808 | 39 w | 0 |
+
+**Open question 4 is answered: naive splitting is good enough.** A 17-22 word median across single-column, two-column and report layouts is exactly the sentence-sized chunk section 2.3 asks for. Two-column reading order came out correct on both papers — pdf.js emits content-stream order, and both laid their columns out in reading order.
+
+Three things the run changed:
+
+1. **A length cap was necessary.** Tables of contents, code listings and tables carry no sentence punctuation and came out as single runs of 100-223 words. At section 2.5's latency, that is seconds of silence with no place to pause. `MAX_SENTENCE_WORDS = 45`, cut at the last clause break (`,;:)—`) before the cap. It changed no word counts — nothing is lost, only divided.
+2. **Empty extraction falls out for free.** The passport scan produced zero sentences, so `model.hasText()` is just "any words in the first few pages", and it looks past page 1 because a text PDF often opens on an image cover.
+3. **Hyphen rejoining earns its place.** 136 rejoins in a ten-page article. `Word.rects` holding both halves, as section 4 planned, is what makes those speakable as one word and highlightable across the line break.
+
+**Known limits, accepted (section 10's stance: fix only what really breaks).**
+
+- **Running headers and footers merge into the first sentence of a page** — `77:4 Allen Wirfs-Brock and Brendan Eich extensions.` This is the most audible defect and the first thing to fix if reading aloud proves annoying. It needs repeated-text detection across pages, not layout analysis.
+- **Footnote markers land mid-sentence** and footnote bodies are spoken at the end of the page: `...the natural laws governing 14.`
+- **Hyphenated compounds that fall on a line break lose their hyphen.** Rejoining cannot tell `well-known` from `under-\nstand`.
+- **Intra-word gaps in kerned PDFs survive** — `Psycholo gy of New-Pro duc t Adoption`. The item boundaries are where the producer put them.
+- **Word rects interpolate on character count.** pdf.js reports no per-glyph advances, so a word's box drifts a few points inside a proportional font. Phase 5 decides whether that is visible.
 
 ## 3. Module map
 
@@ -292,8 +327,8 @@ Each question below has a decision attached. The questions stay written down bec
 3. ~~**Does `declarativeNetRequest` fire on `file://`?**~~
    → **Answered: yes**, with the "Allow access to file URLs" switch on. Local PDFs are intercepted like any other. Extensionless HTTP URLs remain uncatchable — DNR matches on URL, never on `Content-Type` — and the toolbar button covers them, as section 9 intended.
 
-4. **How well does sentence splitting survive real PDFs?** Headers, footers, footnote markers, hyphenated line breaks and multi-column layouts all corrupt naive splitting. This is the largest unknown and the bulk of the real work.
-   → **Start simple and iterate.** Ship the naive split from phase 3, run it on real documents, and fix only what actually breaks. Do not build layout analysis up front.
+4. ~~**How well does sentence splitting survive real PDFs?**~~
+   → **Answered: well enough.** Eight documents, 17-22 word median, correct two-column order on both papers. See 2.6 for the numbers, the one change it forced (a 45-word cap for unpunctuated tables and code), and the known limits — running headers being the loudest. No layout analysis was needed and none is planned.
 
 ## 11. Build phases
 
@@ -383,22 +418,26 @@ Vendor pdf.js by copying `pdf.mjs` and `pdf.worker.mjs` from a release build int
 
 ---
 
-### Phase 3 — Text model
+### Phase 3 — Text model ✅ done
 
-**Answers** open question 4, the largest unknown.
+**Answered** open question 4, the largest unknown. Results, numbers and known limits are in 2.6.
 
-**Files:** `core/document-model.js`
+**Files:** `core/document-model.js`, plus wiring in `viewer.js`
 
-Turn `parser.textItems(n)` into `Sentence[]` and `Word[]` per section 4, keeping `rects` in **page coordinates**. Build lazily, page by page, in order.
+The pipeline is four small steps: items → lines (on `hasEOL`, with a baseline-jump fallback) → words (rejoining hyphens across line ends) → one page string with every word's offset into it → sentence ranges over that string. Building the page string first is what makes the offsets in `Word.start`/`end` fall out for free rather than being tracked through the split.
 
-Start naive: join items into lines, lines into blocks, split blocks on `.?!` followed by whitespace and a capital. Then run it over real PDFs and handle only what actually breaks. Expect trouble from: headers and footers repeating per page, hyphenated line breaks, footnote markers splitting sentences, and multi-column layouts interleaving in the wrong reading order.
+Two things worth knowing before touching it:
 
-**Exit criteria**
+- **The model imports nothing.** That is not tidiness — it is what let the splitting be run over eight real PDFs in node before Chrome ever saw it. Keep it that way and the next change can be checked the same way.
+- **Word rects are interpolated on character count**, because pdf.js reports no per-glyph advances. Section 4's `rects` array holds one entry per line the word spans, so a hyphen-rejoined word carries both halves.
 
-- A debug mode logs the sentence list for a document.
-- Run against at least three real, structurally different PDFs — a single-column paper, a two-column paper, and something with heavy footnotes.
-- Failures are written down here as known limits. Do not chase perfect splitting; get to readable.
-- Empty extraction is detected and reported, for the scanned-PDF case in section 8.
+**Exit criteria** — all met, in node rather than in Chrome
+
+- ✅ Debug mode: `pdfReader.sentences()`, `pdfReader.sentences(page)` or `pdfReader.sentences(from, to)` from the viewer's devtools console prints a table of id, page, word count and text. It is a console object rather than a URL flag because the interceptor appends the source URL raw, so anything after it reads as part of that URL.
+- ✅ Run against eight structurally different PDFs — two-column papers, single-column books, an OCR'd scan, a report and a résumé.
+- ✅ Failures written down as known limits in 2.6.
+- ✅ Empty extraction detected: `model.hasText()` returned false on a passport scan, and `viewer.js` shows the section 8 notice.
+- ⚠️ **Not yet opened in Chrome.** The model is proven; its three lines of wiring in `viewer.js` are not. Confirm alongside phase 2's criteria.
 
 ---
 

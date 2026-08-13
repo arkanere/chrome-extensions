@@ -2,6 +2,7 @@
 
 import * as source from "./core/source.js";
 import * as parser from "./core/parser.js";
+import * as documentModel from "./core/document-model.js";
 import * as rendererFactory from "./view/renderer.js";
 
 const titleEl = document.getElementById("title");
@@ -30,6 +31,8 @@ function sourceUrl() {
   return at === -1 ? null : location.href.slice(at + marker.length);
 }
 
+let model = null;
+
 async function show(doc) {
   titleEl.textContent = doc.label;
   document.title = `${doc.label} — PDF Reader`;
@@ -38,14 +41,19 @@ async function show(doc) {
   const parsed = await parser.open(doc.bytes);
   await renderer.load(parsed);
 
-  // Phase 3 turns these into sentences. For now just prove text is reachable,
-  // which is also the scanned-PDF check from section 8.
-  const firstPageText = await parsed.textItems(1);
-  if (firstPageText.length === 0) {
-    notice("This page has no text layer. It is probably a scan, so reading it aloud will not be possible.");
+  model = documentModel.create(parsed);
+
+  // Section 8's scanned-PDF row: no words in the opening pages means no text
+  // layer, so phase 4 must not offer playback here.
+  if (!(await model.hasText())) {
+    notice("This PDF has no text layer. It is probably a scan, so reading it aloud will not be possible.");
   }
 
-  console.log(`[pdf-reader] ${doc.label}: ${parsed.pageCount} pages, key ${doc.key.slice(0, 12)}…`);
+  console.log(
+    `[pdf-reader] ${doc.label}: ${parsed.pageCount} pages, key ${doc.key.slice(0, 12)}…, ` +
+    `${model.sentences.length} sentences in the first ${model.parsedPages}. ` +
+    `Run pdfReader.sentences() to list them.`,
+  );
 }
 
 async function loadUrl(url) {
@@ -85,6 +93,29 @@ document.getElementById("zoom-out").addEventListener("click", () => {
   zoomIndex = Math.max(zoomIndex - 1, 0);
   applyZoom();
 });
+
+// Debug mode (phase 3): inspect the text model from the devtools console. Not a
+// URL flag, because the interceptor appends the source URL raw and anything
+// after it would be read as part of that URL.
+window.pdfReader = {
+  get model() {
+    return model;
+  },
+
+  // pdfReader.sentences()      — every page parsed so far
+  // pdfReader.sentences(12)    — page 12, parsing up to it first
+  // pdfReader.sentences(12, 20)
+  async sentences(from, to = from) {
+    if (!model) return console.warn("[pdf-reader] no document loaded");
+    await (from === undefined ? model.ensureAll() : model.ensurePages(to));
+
+    const shown = model.sentences.filter((s) => from === undefined || (s.page >= from && s.page <= to));
+    console.table(
+      shown.map((s) => ({ id: s.id, page: s.page, words: s.words.length, text: s.text })),
+    );
+    return shown;
+  },
+};
 
 const src = sourceUrl();
 if (src) {
