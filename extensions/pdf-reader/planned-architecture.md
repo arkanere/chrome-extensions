@@ -583,16 +583,16 @@ v1 is finished and none of this is required. It is written down so a later sessi
 
 **Wait for real use to decide.** These are all fixes to things that may or may not turn out to be annoying:
 
-1. **Running headers and footers merging into the first sentence of a page** (2.6). Named there as the loudest defect: `77:4 Allen Wirfs-Brock and Brendan Eich extensions.` It needs repeated-text detection across pages — a `core/document-model` change, and one that can be checked in node the way phase 3 was, since the model still imports nothing.
+1. **Running headers and footers merging into the first sentence of a page** (2.6). **Not required.** Named there as the loudest defect: `77:4 Allen Wirfs-Brock and Brendan Eich extensions.` It needs repeated-text detection across pages — a `core/document-model` change, and one that can be checked in node the way phase 3 was, since the model still imports nothing.
 2. ~~**Click a word to read from there.**~~ **Done — phase 7.** It was what the entry said it was: a hit test plus `player.seek`, no new module. What the entry did not anticipate is that the hard part is sharing the click with text selection, not the geometry.
-3. **Keyboard shortcuts** — space for play/pause, arrows for skip. Deliberately left out of phase 6: space also scrolls, so it needs a decision about focus rather than a `keydown` handler.
-4. **Footnote markers mid-sentence and footnote bodies at the end of a page** (2.6). Harder than headers and less audible.
+3. **Keyboard shortcuts** — space for play/pause, arrows for skip. **Not required.** Deliberately left out of phase 6: space also scrolls, so it needs a decision about focus rather than a `keydown` handler.
+4. **Footnote markers mid-sentence and footnote bodies at the end of a page** (2.6). **Not required.** Harder than headers and less audible.
 
-**Already deferred by the design, with the reasoning in place:**
+**Already deferred by the design, with the reasoning in place. None of these is required either:**
 
-5. **Pre-buffering sentence N+1** (section 6). The queue was designed not to make this hard. Phase 4 and 5 use did not show a gap worth fixing, so measure before building.
-6. **macOS Premium voices** (open question 2). Untested because none are installed. If they report word events they may be the better default.
-7. **OCR for scanned PDFs** (non-goal). A separate project, not a feature of this one.
-8. **Sharing the Define lookup with `reading-mode`** (section 9). Extract only if it proves valuable here first.
+5. **Pre-buffering sentence N+1** (section 6). **Not required.** The queue was designed not to make this hard. Phase 4 and 5 use did not show a gap worth fixing, so measure before building.
+6. **macOS Premium voices** (open question 2). **Not required.** Untested because none are installed. If they report word events they may be the better default.
+7. **OCR for scanned PDFs** (non-goal). **Not required.** A separate project, not a feature of this one.
+8. **Sharing the Define lookup with `reading-mode`** (section 9). **Not required.** Extract only if it proves valuable here first.
 
 **Where to be careful.** Items 1 and 4 change `core/document-model`, which is the pivot every other module reads through (section 3). Keep it importing nothing — that property is what let phase 3 be checked against eight real PDFs outside Chrome, and it is worth more than any single fix on this list.
