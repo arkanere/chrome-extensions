@@ -7,10 +7,11 @@ import * as rendererFactory from "./view/renderer.js";
 import * as highlighterFactory from "./view/highlighter.js";
 import * as speechAdapter from "./speech/adapter.js";
 import * as playerFactory from "./player/controller.js";
+import * as controlsFactory from "./view/controls.js";
+import * as settings from "./store/settings.js";
 
 const titleEl = document.getElementById("title");
 const noticeEl = document.getElementById("notice");
-const playEl = document.getElementById("play");
 const renderer = rendererFactory.create(document.getElementById("pages"));
 const highlighter = highlighterFactory.create(renderer);
 const speech = speechAdapter.create();
@@ -39,60 +40,144 @@ function sourceUrl() {
 
 let model = null;
 let player = null;
+let doc = null;
 
-// Chosen once: the picker that lets the user change it is phase 6.
-const voice = speechAdapter.chooseVoice(await speech.listVoices());
+const prefs = await settings.loadPrefs();
+const voices = await speech.listVoices();
+
+// A saved voice wins if it is still installed. If it is not, section 7's chain
+// picks instead — and section 8's row for that says to tell the user which voice
+// ended up speaking, which voiceNotes() does.
+const savedVoice = prefs.voice ? voices.find((v) => v.id === prefs.voice) : null;
+let voice = savedVoice || speechAdapter.chooseVoice(voices);
+let rate = prefs.rate ?? 1;
+
 console.log(
   `[pdf-reader] voice: ${voice ? voice.label : "platform default"}` +
-  `${voice && !voice.supportsWordEvents ? " — no word events" : ""}`,
+  `${voice && !voice.supportsWordEvents ? " — no word events" : ""}` +
+  `, rate ${rate}`,
 );
 
-function setPlayLabel() {
-  playEl.textContent = player && player.playing ? "Pause" : "Read aloud";
+// Section 8's "voice missing at load" row, plus section 7's note about playing
+// without highlighting rather than not playing at all.
+function voiceNotes() {
+  const notes = [];
+  if (prefs.voice && !savedVoice) {
+    notes.push(
+      `Your saved voice <b>${prefs.voice}</b> is not installed on this machine, ` +
+      `so <b>${voice ? voice.label : "the platform default"}</b> is being used.`,
+    );
+  }
+  if (!voice) {
+    notes.push("No voice reporting word timing was found, so nothing will be highlighted.");
+  } else if (!voice.supportsWordEvents) {
+    notes.push(`<b>${voice.label}</b> reports no word timing, so nothing will be highlighted.`);
+  }
+  return notes;
 }
 
-function startPlayer() {
-  player = playerFactory.create(model, speech, { voice: voice && voice.id, rate: 1 });
+const controls = controlsFactory.create(
+  document.getElementById("controls"),
+  { voices, voice: voice && voice.id, rate, rateRange: speechAdapter.rateRange },
+  {
+    toggle() {
+      if (!player) return;
+      clearNotice();
+      player.toggle();
+    },
+    next: () => player && player.next(),
+    previous: () => player && player.previous(),
 
-  player.onState(setPlayLabel);
-  player.onEnd(() => notice("Reached the end of the document."));
+    voice(id) {
+      voice = voices.find((v) => v.id === id) || null;
+      if (player) player.setVoice(id);
+      settings.savePrefs({ voice: id });
+    },
+    rate(value) {
+      rate = value;
+      if (player) player.setRate(value);
+      settings.savePrefs({ rate: value });
+    },
+  },
+);
+controls.setEnabled(false);
+
+function startPlayer(startAt) {
+  player = playerFactory.create(model, speech, {
+    voice: voice && voice.id,
+    rate,
+    sentenceId: startAt,
+  });
+
+  player.onState(({ playing }) => controls.setPlaying(playing));
+  player.onEnd(() => {
+    // The document is finished, so there is nothing left to resume to. Leaving
+    // the position behind would reopen it on its last sentence forever.
+    notice("Reached the end of the document.");
+    settings.clearPosition(doc.key);
+  });
   player.onError((message) => notice(`Speech stopped: ${message}. Press play to resume.`, true));
+
   // The Position seam (section 5.2): the controller reports where it is, the
   // viewer looks the sentence up, and the highlighter draws it. Neither side
   // knows the other.
+  let lastSaved = -1;
   player.onPosition((position) => {
     if (window.pdfReader.trace) console.log("[pdf-reader] position", position);
     highlighter.show(model.sentence(position.sentenceId), position.wordIndex);
+
+    // One write per sentence — a few seconds apart at any speed — rather than
+    // one per word.
+    if (position.sentenceId !== lastSaved) {
+      lastSaved = position.sentenceId;
+      settings.savePosition(doc.key, position.sentenceId, doc.label);
+    }
   });
 
-  playEl.disabled = false;
-  setPlayLabel();
+  controls.setEnabled(true);
+  controls.setPlaying(player.playing);
 }
 
-async function show(doc) {
+async function show(loaded) {
+  doc = loaded;
   titleEl.textContent = doc.label;
   document.title = `${doc.label} — PDF Reader`;
   clearNotice();
 
   if (player) player.pause();
+  player = null;
   highlighter.clear();
-  playEl.disabled = true;
+  controls.setEnabled(false);
 
   const parsed = await parser.open(doc.bytes);
   await renderer.load(parsed);
 
   model = documentModel.create(parsed);
+  const notes = [];
 
   // Section 8's scanned-PDF row: no words in the opening pages means no text
   // layer, so playback is not offered at all.
   if (await model.hasText()) {
-    startPlayer();
-    if (voice && !voice.supportsWordEvents) {
-      notice(`${voice.label} is the only voice available and it reports no word timing, so nothing will be highlighted.`);
+    const remembered = await settings.loadPosition(doc.key);
+    const startAt = remembered ? remembered.sentenceId : 0;
+    startPlayer(startAt);
+
+    // Seeking rather than only starting there: it emits a Position, which paints
+    // the highlight and scrolls the page into view, so the resume is visible
+    // before anything is spoken.
+    if (startAt > 0) {
+      await player.seek(startAt);
+      notes.push(
+        `Picked up where you stopped, at sentence ${startAt + 1}. ` +
+        `<a href="#" data-action="restart">Start from the beginning</a>`,
+      );
     }
+    notes.push(...voiceNotes());
   } else {
-    notice("This PDF has no text layer. It is probably a scan, so reading it aloud will not be possible.");
+    notes.push("This PDF has no text layer. It is probably a scan, so reading it aloud will not be possible.");
   }
+
+  if (notes.length) notice(notes.join("<br><br>"));
 
   console.log(
     `[pdf-reader] ${doc.label}: ${parsed.pageCount} pages, key ${doc.key.slice(0, 12)}…, ` +
@@ -124,11 +209,20 @@ document.getElementById("file").addEventListener("change", async (e) => {
   if (file) await show(await source.fromFile(file));
 });
 
-playEl.addEventListener("click", () => {
-  if (!player) return;
+// The only interactive thing a notice ever offers: throw the remembered position
+// away and go back to sentence 0.
+noticeEl.addEventListener("click", (e) => {
+  const link = e.target.closest('[data-action="restart"]');
+  if (!link) return;
+  e.preventDefault();
   clearNotice();
-  player.toggle();
+  if (doc) settings.clearPosition(doc.key);
+  if (player) player.seek(0);
 });
+
+// chrome.tts speaks at the extension level, not the page's, so closing the tab
+// mid-sentence would leave the voice talking to an empty room.
+window.addEventListener("pagehide", () => speech.stop());
 
 // setScale rebuilds every page, which throws the overlays away with them, so the
 // highlight has to be asked for again at the new scale.
@@ -163,6 +257,10 @@ window.pdfReader = {
   // check that Natural's two boundary events per word collapse into one.
   trace: false,
   voices: () => speech.listVoices(),
+
+  // pdfReader.forget() — drop this document's remembered position, so the next
+  // open starts at the beginning. Used to re-test the phase 6 resume by hand.
+  forget: () => doc && settings.clearPosition(doc.key),
 
   // pdfReader.highlight(id, word) — paint a sentence without playing it, to
   // check the phase 5 geometry against the page on its own.

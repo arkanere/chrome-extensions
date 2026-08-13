@@ -1,6 +1,6 @@
 # PDF Reader — Architecture
 
-Status: **phases 0-5 done.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, reads them aloud, and highlights each word as it is spoken. What is left is phase 6: controls, settings and resume.
+Status: **phases 0-5 done; phase 6 written and awaiting its Chrome check.** The extension intercepts PDFs, opens them in its own viewer, renders them with a selectable text layer, turns their text into sentences with word geometry, reads them aloud, and highlights each word as it is spoken. Phase 6 adds the controls, the remembered voice, speed and position, and the rest of section 8 — its code is in, its exit criteria have not been run by hand yet.
 
 This document records the design, the measured facts behind it, and what each phase actually found. Sections 1-9 are the design; section 11 is the build plan and the place to pick up work.
 
@@ -14,19 +14,15 @@ This document records the design, the measured facts behind it, and what each ph
 | 3 — Text model | **done** | `core/document-model.js`. Run against 8 real PDFs outside Chrome, then confirmed in the viewer; open question 4 answered in 2.6 |
 | 4 — Audio | **done** | `speech/adapter.js`, `player/controller.js`. Word mapping proved in node (2.7), then playback confirmed in Chrome |
 | 5 — Highlight | **done** | `view/highlighter.js` + an overlay in `view/renderer.js`. Confirmed in Chrome; phase 4's open question answered |
-| 6 — Controls, settings, resume | **next** | `view/controls.js`, `store/settings.js` |
+| 6 — Controls, settings, resume | **written, unconfirmed** | `view/controls.js`, `store/settings.js`, wiring in `viewer.*`. Exit criteria not yet run in Chrome |
 
-**To resume:** read section 3 (module map), then section 11's phase 6. Everything phases 0-5 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
+**To resume:** read section 3 (module map), then section 11's phase 6 — its "how it was built" notes are written; what is left is running its exit criteria in Chrome. Everything phases 0-5 discovered is folded into the design sections, so those can be trusted as written rather than re-verified.
 
-**What phase 6 still owes.** Nothing in it is blocked or uncertain — it is the last of the plan, and every piece of it is named in its section below:
-
-- `view/controls.js`: a voice picker (voices without word events hidden, section 7), a rate slider clamped to 0.6-2.5, and skip-sentence buttons. `player/controller` already exposes `setVoice`, `setRate`, `next` and `previous`; nothing new is needed on that side.
-- `store/settings.js`: `chrome.storage.local` for voice, rate, and last position keyed by the phase 2 document hash. `viewer.js` already computes the hash and already accepts a starting `sentenceId` in the controller's config, so resume is a matter of reading it back and passing it in.
-- The rest of section 8's failure table. Two rows are already built — the `file://` explainer and the no-text-layer notice — so what is left is resume-after-error and triggering every row by hand.
+**What phase 6 owes.** Only the hand check. The code went in as planned, with `player/controller` untouched — it already exposed `setVoice`, `setRate`, `next` and `previous`, and already accepted a starting `sentenceId`. What remains is to load the extension and run the exit criteria: reopen a document and see the position, voice and speed come back, and trigger every row of section 8 by hand.
 
 **Verified by hand, not by tests.** There is no test suite. Each phase was checked by loading the unpacked extension and using it — the exit criteria in section 11 are the checklist. Phase 3 is the exception: `core/document-model.js` imports nothing, so it was also run over real PDFs in node (see 2.6) before being confirmed in the viewer.
 
-**Nothing is owed to the browser.** Every phase so far has had its exit criteria run in Chrome, phase 5 included. The extension reads a PDF aloud and highlights along today; phase 6 is what makes it configurable and resumable rather than what makes it work.
+**One thing is owed to the browser.** Phases 0-5 each had their exit criteria run in Chrome. Phase 6's have not — its code is written but unexercised, so treat its notes as intent until the check is done. Nothing in it can stop the extension from reading a PDF aloud: phase 6 makes the reader configurable and resumable rather than making it work.
 
 ## 1. What we are building
 
@@ -511,16 +507,26 @@ How it fits together:
 
 ---
 
-### Phase 6 — Controls, settings, resume
+### Phase 6 — Controls, settings, resume — written, not yet confirmed
 
-**Files:** `view/controls.js`, `store/settings.js`
+**Files:** `view/controls.js`, `store/settings.js`, plus wiring in `viewer.js`, `viewer.html`, `viewer.css`
 
-- `view/controls.js`: play/pause, skip sentence, rate slider, voice picker. Voices without word events are hidden from the picker (section 7).
-- `store/settings.js`: `chrome.storage.local` for voice, rate, and last position keyed by the phase 2 document hash.
-- Startup applies the section 7 voice chain and, if it lands on a voice without word events, shows the one-line note explaining why nothing is highlighted.
-- Implement the remaining rows of the section 8 failure table: the `file://` permission explainer, the no-text-layer message, and resume-after-error.
+- `store/settings.js`: the only file that touches `chrome.storage`. It keeps two things apart — `prefs` (`voice`, `rate`) for the whole extension, and `positions` keyed by the phase 2 document hash. Voice and speed are properties of the reader, not of a document, so they are not per-key. Every read and write is wrapped: storage failing is not a reason to refuse to read a PDF aloud.
+- `view/controls.js`: builds its own markup into an empty `#controls` in the header — previous sentence, play/pause, next sentence, a speed slider over `speech/adapter`'s exported `rateRange`, and the voice picker. It reports changes through handlers and touches neither the player nor storage, so `viewer.js` stays the only place that knows a voice change means "tell the controller **and** remember it".
+- The picker hides voices without word events (section 7), with one exception: a voice already speaking is always listed, because if the chain fell through to one, the picker must show what is actually being heard. Voices are grouped into Natural and System, since the seven Natural voices otherwise sit buried among ~190 macOS ones.
+- Resume **seeks** rather than only starting there. `seek` emits a `Position` even when paused, so the highlight paints and the page scrolls into view: the resume is visible before anything is spoken. The notice offers "start from the beginning", which forgets the position and seeks to 0.
+- Reaching the end **clears** the position. Keeping it would reopen a finished document on its last sentence forever.
+- Position is written once per sentence, not once per word — the changed-sentence test in `viewer.js`'s `onPosition`. At any speed that is a write every few seconds.
+- **`chrome.tts` outlives the page.** Closing the tab mid-sentence left the voice talking, so `viewer.js` stops speech on `pagehide`. Not something any earlier phase could have noticed, since nothing before this one kept playing long enough to close the tab on.
+- **`pdfReader.forget()`** drops this document's remembered position, which is how the resume path gets re-tested without hunting for a fresh PDF.
 
-**Exit criteria**
+Three decisions worth knowing, none of them forced by the plan:
+
+1. **Voice and rate are global, position is per-document.** Per-document voices would mean a picker that silently changes meaning as you open files.
+2. **The rate slider commits on `change`, not `input`.** Every commit restarts the current sentence (section 6's stop-and-remember), so committing per drag step would stutter.
+3. **`positions` is capped at 200 entries**, oldest-read dropped first. Not about space — records are tiny — but about a map that would otherwise grow forever with documents opened once.
+
+**Exit criteria** — not yet run
 
 - Reopening a document restores the last position, voice and rate.
 - Every row of the section 8 table has been triggered by hand and behaves as written.
