@@ -12,11 +12,11 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 
 | Phase | State | Notes |
 |---|---|---|
-| 0 — ZIP and DRM probe | **done** | All 113 test books open by hand-rolled ZIP; nothing vendored. Two surprises: OPF elements can be namespace-prefixed, and `encryption.xml` usually means font obfuscation, not DRM. See 2.5 |
+| 0 — ZIP and DRM probe | **done** | All 113 test books open by hand-rolled ZIP; nothing vendored. Two surprises: OPF elements can be namespace-prefixed, and `encryption.xml` usually means font obfuscation, not DRM. See 2.6 |
 | 1 — Shell, entry points, viewer page | **mostly done** | Viewer, picker and drag-and-drop confirmed in Chrome. Still open: the toolbar button, the context menu, and open question 3. A `file://` source failed to read on this machine even with the switch on — see below |
 | 2 — `core/epub.js`: ZIP, OPF, spine | **done** | Exercised on all 113 books outside Chrome and on the key books in Chrome. Added finding 5: a malformed chapter needs the HTML-parser fallback |
-| 3 — Render chapters | **done** | `adoptedStyleSheets` worked first try, so open question 4 never arose. Isolation confirmed against a book that styles `body`, `h1` and `p`. Found the SVG `xlink:href` rewriting bug (2.4) |
-| 4 — Text model | **not started** | Half of it is copied from pdf-reader |
+| 3 — Render chapters | **done** | `adoptedStyleSheets` worked first try, so open question 4 never arose. Isolation confirmed against a book that styles `body`, `h1` and `p`. Found the SVG `xlink:href` rewriting bug (2.4). Two bugs in it surfaced later, in phase 4 — see 2.5 |
+| 4 — Text model | **done** | 69,313 sentences over all 113 books, no bad offsets. Found two renderer bugs phase 3 had left: `fill()` was not awaitable, so a chapter could be walked before it existed and silently lose its text (2.6). Words need an `endNode` (4.1), and the model needs `rebindSection` (2.6) |
 | 5 — Audio | **not started** | Two files copied verbatim, then wiring |
 | 6 — Highlight | **not started** | CSS Custom Highlight API. Answers open question 5 |
 | 7 — Controls, settings, resume, click-to-read | **not started** | |
@@ -32,7 +32,7 @@ It is written so a session that has never seen this project can open it cold, re
 
 **Where things are copied from.** Every "copy from pdf-reader" below means the file at the same path under `../pdf-reader/`. Read [`../pdf-reader/architecture.md`](../pdf-reader/architecture.md) alongside this document — its sections 2.2-2.7 are measurements this design rests on and does not repeat.
 
-**The test corpus.** Phase 0 gathers DRM-free books to probe against. Record where they live in 2.5 and reuse the same set in every later phase's exit criteria — "every test book" throughout means that set, so a cold session knows what to run against.
+**The test corpus.** Phase 0 gathers DRM-free books to probe against. Record where they live in 2.6 and reuse the same set in every later phase's exit criteria — "every test book" throughout means that set, so a cold session knows what to run against.
 
 **The debug object.** `window.epubReader` in `viewer.js` grows as the phases do, mirroring pdf-reader's `pdfReader`: phase 2 adds `spine()`, phase 4 adds `sentences()`, phase 5 adds `trace`, phase 6 adds `highlight()`, phase 7 adds `voices()` and `forget()`. Several exit criteria below are written in terms of it, so add each entry in the phase that needs it rather than leaving them all to the end.
 
@@ -118,7 +118,19 @@ Unlike a PDF, an EPUB ships stylesheets that were written to control a whole pag
 - **Resource URLs must be rewritten on the `Attr` node, matched by `localName`.** A cover page is usually an SVG `<image xlink:href="cover.jpeg">`. That attribute is namespaced, so a `[xlink\:href]` selector does not match it, and `setAttribute("xlink:href", url)` would add a *second*, unnamespaced attribute beside the original rather than replacing it — leaving the image still pointing at a path that does not resolve. Walking `el.attributes` and assigning `attr.value` keeps whatever namespace the attribute already had.
 - **The book's font sizes have to be overridden, its font families kept.** A book that sets `body { font-size: 12pt }` would otherwise ignore the header's font-size control completely. The base stylesheet forces `font-size: inherit` on the block elements and leaves everything else to the book.
 
-### 2.5 Phase 0's findings
+### 2.5 The rendered DOM is the text, and it does not stay still
+
+Found in phase 4. In pdf-reader the parser was the source of text and the page was only a picture of it. Here the rendered chapter *is* the text: the model's words point at real text nodes in a real shadow root. That makes the renderer's lifecycle the model's problem, in two ways phase 3 did not anticipate.
+
+**1. A chapter must be finished rendering before it can be walked.** `view/renderer.js` guarded `fill()` with a plain "already started" flag, so a second caller returned immediately — with a shadow root that was still empty, because the first caller's `fill` was still awaiting. `core/text-walk` then walked nothing and the chapter silently lost all of its text. It fires constantly in practice, because the `IntersectionObserver` starts the first few chapters at load and the model asks for the same ones a moment later: **9,448 sentences, 14 % of the corpus, were being dropped this way.** The guard is now a promise stored on the slot, so every caller awaits the same work and `show(n)` resolves only once the chapter is really there.
+
+A silent-empty failure is the shape to watch for in this extension. Nothing threw, nothing was logged, and every book still looked right on screen — the loss was only visible by comparing a chapter's `textContent` against the sentences the model made from it. The 113-book sweep is what caught it.
+
+**2. A chapter that is torn down takes the model's nodes with it.** The retention observer drops a far-away chapter's DOM, and when it scrolls back it is rebuilt from brand new text nodes — leaving every `Word` for that chapter pointing into a fragment nothing can see. Highlighting and click-to-read both need live nodes, so the renderer now reports every fill through `onFill(section, root)`, the viewer re-walks the rebuilt chapter, and `model.rebindSection(section, runs)` swaps the new nodes into the existing `Word` objects.
+
+The bytes are the same on both passes, so the words must come out identical and only their nodes differ. `rebindSection` verifies that in full — same sentence count, same texts, same word counts — before it writes anything, and refuses the whole chapter otherwise rather than binding half of it to the wrong nodes. **Sentence ids never move either way**, which is what keeps this invisible to the player. Decided with the user, against the simpler option of never tearing down a chapter the model has read, which would have given a 224-chapter book nowhere to put its memory.
+
+### 2.6 Phase 0's findings
 
 **The test corpus** is `~/Desktop/Reading` — **113 EPUBs**, mostly technical and trade non-fiction, a wide producer spread. "Every test book" throughout this document means that folder. The probe script was throwaway and is gone; its findings are below.
 
@@ -212,7 +224,7 @@ The one arrow that differs from pdf-reader is `view/renderer → core/text-walk 
 | `core/document-model` | Text runs → words and sentences, each word carrying its DOM node and offset | ZIP, speech, the DOM API |
 | `player/controller` | Queue, scheduling, play/pause/seek, current position | EPUB, DOM, voice specifics |
 | `speech/adapter` | Speak a string, report word position, stop | Documents, sections, DOM |
-| `view/renderer` | Put chapters on screen, in shadow roots, lazily | Speech, sentences |
+| `view/renderer` | Put chapters on screen, in shadow roots, lazily; report every fill through `onFill` | Speech, sentences, who is listening to `onFill` |
 | `view/highlighter` | Paint word and sentence highlight from a position event | Speech engines, EPUB |
 | `view/controls` | Buttons, voice picker, rate slider | Everything except controller + settings |
 | `store/settings` | Persist voice, rate, last position | Everything else |
@@ -245,9 +257,10 @@ interface Word {
   text: string
   start: number                // char offset within Sentence.text
   end: number
-  node: Text                   // the DOM text node it came from
+  node: Text                   // the DOM text node it starts in
   nodeStart: number            // offset within that node
-  nodeEnd: number
+  endNode: Text                // the node it ends in — the same node, usually
+  nodeEnd: number              // offset within endNode
 }
 
 // Emitted by the controller as playback advances. Unchanged from pdf-reader.
@@ -259,7 +272,9 @@ interface Position {
 
 The only real change from pdf-reader is `Word`: `rects: Rect[]` in page coordinates becomes a DOM node plus offsets. `Sentence` gains `section` in place of `page`, and a `start` offset that section 4.3 needs.
 
-A word that spans two text nodes — `dis<em>connect</em>ed` — is kept as a single `Word` whose `node`/`nodeStart` mark its beginning and whose range ends at `nodeEnd` in a later node; the highlighter builds one `Range` across both, which is the DOM equivalent of pdf-reader's multi-`rect` wrapped word. Phase 4 confirms this case.
+A word that spans two text nodes — `dis<em>connect</em>ed` — is kept as a single `Word` whose `node`/`nodeStart` mark its beginning and whose `endNode`/`nodeEnd` mark its end in a later node; the highlighter builds one `Range` across both, which is the DOM equivalent of pdf-reader's multi-`rect` wrapped word.
+
+**Phase 4 confirmed this case**, and added `endNode`, which the original shape above was missing: a `Range` needs four values, and `node` plus `nodeEnd` cannot express one that ends in a different node. For a word inside a single text node — the overwhelming majority — `endNode === node`, so the highlighter needs no special case. Across the corpus this fires on roughly 1 word in 2,000; the `Range` built from those four values was checked to stringify back to exactly `Word.text` on every one of them.
 
 ### 4.2 Keeping `core/document-model` free of the DOM
 
@@ -268,10 +283,21 @@ pdf-reader's best property is that its model imports **nothing** — not pdf.js,
 So the model is handed a plain array of runs:
 
 ```ts
-interface TextRun { text: string; node: unknown }   // node is opaque to the model
+interface TextRun {
+  text: string        // the text node's raw text, uncollapsed
+  node: unknown       // opaque to the model; null on the two runs below
+  break?: boolean     // a block boundary: end the sentence here
+}
 ```
 
 `core/text-walk` produces these with a `TreeWalker` over the rendered chapter, skipping `script`, `style`, and elements whose computed `display` is `none`. The model treats `node` as an opaque token it stores and hands back. It never calls a DOM method, so it still runs in node with `node` set to a plain string.
+
+**`text` is the text node's raw text, not a trimmed or collapsed version of it.** That is the whole trick that keeps the model free of the DOM: an offset into `run.text` *is* an offset into the text node, so the model can hand back `{ node, nodeStart, nodeEnd }` without ever having measured anything.
+
+Two runs carry no node, both added in phase 4 because a real book needs them:
+
+- A **break run** (`break: true`) between block-level elements. The model ends the sentence at one, which is what stops a heading running into the paragraph below it. `text-walk` decides where they go by comparing each text node's nearest non-inline ancestor with the previous one's — two nodes in the same `<p>` are in the same block however many `<em>`s sit between them.
+- A **separator run** for `<br>`, a single space. It ends the word but not the sentence. Without it `line one<br>line two` walks to two adjacent text nodes with nothing between them and the model joins them into `onetwo` — the same merging rule that correctly produces `disconnected` from `dis<em>connect</em>ed`.
 
 ### 4.3 Document key and resume position
 
@@ -297,7 +323,7 @@ Swapping `chrome.tts` for Piper or Kokoro later should still touch this file and
 interface Epub {
   sectionCount: number                              // spine length
   title: string
-  encrypted: boolean                                // DRM: a content document is encrypted (2.5)
+  encrypted: boolean                                // DRM: a content document is encrypted (2.6)
   spine: SpineItem[]                                // reading order, for the renderer and the debug object
   section(n: number): Promise<Document>             // parsed XHTML for spine item n
   resource(path: string): Promise<Uint8Array | null>  // images, fonts, CSS
@@ -308,7 +334,7 @@ interface Epub {
 interface SpineItem {
   path: string
   mediaType: string
-  present: boolean                                  // false if absent from the archive (2.5, finding 4)
+  present: boolean                                  // false if absent from the archive (2.6, finding 4)
   byteLength: number
 }
 ```
@@ -348,7 +374,7 @@ Voices without word-boundary events are hidden from the picker. If step 3 is all
 | Case | Behaviour |
 |---|---|
 | EPUB downloaded instead of navigated to | Expected to be the *common* case, not the exception (see 9). The file picker, the toolbar button, the context menu and drag-and-drop are all first-class ways in |
-| **DRM'd book** | An encrypted content document (2.5), or the OPF unreadable. Say so plainly — "This book is DRM-protected and cannot be opened" — and do not offer playback. Same shape as pdf-reader's scanned-PDF notice |
+| **DRM'd book** | An encrypted content document (2.6), or the OPF unreadable. Say so plainly — "This book is DRM-protected and cannot be opened" — and do not offer playback. Same shape as pdf-reader's scanned-PDF notice |
 | Obfuscated fonts | `encryption.xml` covering only non-spine resources. **Open the book normally.** The font fails to decode and the reader's own font is used, which is the preferred rendering anyway |
 | Malformed ZIP or missing OPF | One notice naming what was missing. No partial render |
 | A single chapter fails to parse | Skip it, mark the slot failed, keep the rest of the book readable. A book is not one document the way a PDF is |
@@ -380,8 +406,8 @@ Voices without word-boundary events are hidden from the picker. If step 3 is all
 
 None of these blocks starting. Each names the phase that answers it.
 
-1. ~~**Does a hand-rolled ZIP read open every real book?**~~ → **Answered in phase 0: yes.** All 113 test books open. Stored and deflate are the only methods present, no zip64, and data descriptors need no handling because the central directory carries the real sizes. Nothing vendored. See 2.5.
-2. ~~**Does `META-INF/encryption.xml` reliably identify a DRM'd book?**~~ → **Answered in phase 0: no — and the original stance would have refused a readable book.** `encryption.xml` is also how Adobe font obfuscation is declared, which is common and harmless. The test is whether an encrypted `CipherReference` names a *content document*, not whether the file exists. See 2.5. Untested on a true DRM'd book, none being available.
+1. ~~**Does a hand-rolled ZIP read open every real book?**~~ → **Answered in phase 0: yes.** All 113 test books open. Stored and deflate are the only methods present, no zip64, and data descriptors need no handling because the central directory carries the real sizes. Nothing vendored. See 2.6.
+2. ~~**Does `META-INF/encryption.xml` reliably identify a DRM'd book?**~~ → **Answered in phase 0: no — and the original stance would have refused a readable book.** `encryption.xml` is also how Adobe font obfuscation is declared, which is common and harmless. The test is whether an encrypted `CipherReference` names a *content document*, not whether the file exists. See 2.6. Untested on a true DRM'd book, none being available.
 3. **Does the `declarativeNetRequest` redirect fire on `.epub` at all?** → **Phase 1.** Stance: **probably not**, because Chrome downloads `.epub` rather than navigating to it. Unlike pdf-reader, where interception was the primary path and manual entry the fallback, here the file picker is the primary path and interception is a bonus. Design accordingly and do not be disappointed.
 4. ~~**Does an injected `<style>` survive the extension page's CSP, inside a shadow root?**~~ → **Answered in phase 3: the question never arose.** `CSSStyleSheet` + `adoptedStyleSheets` — named in the original stance as the fallback — was tried first and worked, so no `<style>` element is ever injected and no CSP question is asked. It is also the better implementation: the sheets are constructed objects that can be replaced wholesale, and a book's stylesheet that Chrome rejects can be caught per sheet with `try`/`catch` around `replaceSync`, losing that book's styling rather than the chapter.
 5. **Do `::highlight()` pseudo-elements resolve for ranges inside a shadow root?** → **Phase 6.** Stance: the registration is global (`CSS.highlights`) but the *styling* resolves against the tree the range lives in, so the highlight CSS almost certainly has to be inside each shadow root too. Cheap to do; confirm rather than assume. If the API misbehaves across shadow boundaries entirely, the fallback is pdf-reader's original approach — an overlay layer painted from `range.getClientRects()` — which is a known-good design already written once.
@@ -443,7 +469,7 @@ For each book record: producer (from the OPF), compression methods seen, zip64 p
 **Exit criteria**
 
 - Every test book opens, or the failures are understood well enough to decide.
-- **Record the table in section 2.5**, along with where the test books live, and record the vendor-or-not decision in section 9. Every later phase's "every test book" means this set.
+- **Record the table in section 2.6**, along with where the test books live, and record the vendor-or-not decision in section 9. Every later phase's "every test book" means this set.
 - If a DRM'd book is available, confirm it is detected rather than half-opened.
 
 ---
@@ -479,18 +505,18 @@ For each book record: producer (from the OPF), compression methods seen, zip64 p
 `core/epub.js` is the only file that knows the container format, and implements section 5.2:
 
 - End-of-central-directory record → central directory → entry table.
-- **Read each entry's data offset from its local header**, not from the central directory's name/extra lengths (2.5, finding 1).
+- **Read each entry's data offset from its local header**, not from the central directory's name/extra lengths (2.6, finding 1).
 - `META-INF/container.xml` → the OPF path.
 - The OPF → `<manifest>` (id → href, media-type) and `<spine>` (idrefs in reading order), plus `dc:title`.
-- **Select every element with `getElementsByTagNameNS("*", …)`** — two test books prefix their OPF elements, and `getElementsByTagName` yields a silently empty spine (2.5, finding 3).
+- **Select every element with `getElementsByTagNameNS("*", …)`** — two test books prefix their OPF elements, and `getElementsByTagName` yields a silently empty spine (2.6, finding 3).
 - Resolve every href relative to the OPF's directory, and `decodeURIComponent` it. Getting this wrong is the classic EPUB bug.
 - `DOMParser` for all three XML documents.
-- `encrypted`: an encrypted `CipherReference` naming the OPF or a spine item — **not** the mere presence of `encryption.xml` (2.5).
+- `encrypted`: an encrypted `CipherReference` naming the OPF or a spine item — **not** the mere presence of `encryption.xml` (2.6).
 
 **Exit criteria**
 
 - `console.table` of the spine for each test book: index, href, media type, byte length — in correct reading order.
-- Title and section count correct. Spine lengths match 2.5's table — including the 224-item book.
+- Title and section count correct. Spine lengths match 2.6's table — including the 224-item book.
 - Both namespace-prefixed books yield a non-empty spine.
 - The font-obfuscated book reports `encrypted: false` and opens.
 - A spine item absent from the archive is reported, not thrown on.
@@ -532,23 +558,27 @@ Internal links between chapters (`href="chapter3.xhtml#note"`) resolve to a scro
 
 **Files:** `core/text-walk.js`, `core/document-model.js`
 
-`core/text-walk.js`: a `TreeWalker` over a rendered chapter's shadow root, in document order, skipping `script`, `style`, and elements computing to `display: none`. Emits `TextRun[]`. Inserts a paragraph break between block-level elements so sentences do not run across a heading into the next paragraph — the EPUB equivalent of pdf-reader's `hasEOL` handling, and far more reliable than it was.
+`core/text-walk.js`: a `TreeWalker` over a rendered chapter's shadow root, in document order, skipping `script`, `style`, and elements computing to `display: none`. Emits `TextRun[]` (4.2). Inserts a paragraph break between block-level elements so sentences do not run across a heading into the next paragraph — the EPUB equivalent of pdf-reader's `hasEOL` handling, and far more reliable than it was. It also emits a space for `<br>`, which the plan did not anticipate: without it two adjacent text nodes merge into one word.
 
 `core/document-model.js`: **copy the sentence half of pdf-reader's file unchanged** — `SENTENCE_END`, `ABBREVIATIONS`, `isAbbreviation`, `sentenceRanges`, `MAX_SENTENCE_WORDS`, `CLAUSE_BREAK`, `chunk` — along with the `create()` shape: lazy in-order parsing, the serialised queue so ids never shift, `ensureSections`, `hasText`.
 
 **Delete rather than port:** `geometry`, `tokensFromItem`, `linesFromItems`, `wordsFromLines` and its hyphen rejoining, `wordAtPoint`, `HIT_LINE_SLACK`, `HIT_SIDE_SLACK`.
 
-**Add:** building words from runs while carrying `{ node, nodeStart, nodeEnd }`, and `sentenceAtOffset(section, charOffset)` for 4.3's resume.
+**Add:** building words from runs while carrying `{ node, nodeStart, endNode, nodeEnd }`, `sentenceAtOffset(section, charOffset)` for 4.3's resume, and `rebindSection(section, runs)` for 2.5's re-render.
 
 The file still imports nothing. Check the splitter in plain node with synthetic runs before Chrome sees it.
 
 **Exit criteria**
 
-- `epubReader.sentences()` tables look right against the rendered chapter, checked by eye on each test book.
-- Sentence lengths in the same range pdf-reader measured (17–22 word median); the 45-word cap still fires on unpunctuated lists.
-- A word split across an inline element produces one `Word`, not two.
-- Headings do not merge into the following paragraph.
-- `hasText` correct, including on a book that opens with a cover image.
+- ✅ `epubReader.sentences()` tables look right against the rendered chapter, checked by eye on each test book.
+- ⚠️ Sentence lengths in the same range pdf-reader measured (17–22 word median); the 45-word cap still fires on unpunctuated lists. **The cap fires — 423 times across 62 of the 113 books. The median does not match, and should not have been expected to:** counting every sentence the median is 10 words, and counting only those of 5 words or more it is 15 (p10 8, p90 20). pdf-reader measured papers, which are nearly all prose. A book is prose plus headings, table-of-contents entries, captions, page numbers and running headers, and each of those is correctly its own short sentence. Prose sentences themselves land where pdf-reader's did — the books that are almost entirely prose (*Technics and Civilization*, *Scale*, *A Brief History of Time*) measure 24, 24 and 18.
+- ✅ A word split across an inline element produces one `Word`, not two. 3,920 of them across 95 books; every one checked by building its `Range` and confirming it stringifies back to `Word.text`.
+- ✅ Headings do not merge into the following paragraph.
+- ✅ `hasText` correct, including on a book that opens with a cover image — true on all 113, and false on a synthetic empty book.
+
+**How it was checked.** All 113 books, first six sections each: 69,313 sentences, and for every word both `Sentence.text.slice(start, end)` and the text its DOM range covers compared against `Word.text`. **Zero mismatches, zero empty words, zero page errors.** The same sweep is what caught 2.5's two renderer bugs, and it is worth re-running after any change to the walker or the splitter.
+
+The sweep ran against headless Chrome over CDP, driving the static server from ground rules above — the same modules in the same engine, unattended. The `claude-in-chrome` extension could not be used because it has no permission for `localhost`.
 
 ---
 

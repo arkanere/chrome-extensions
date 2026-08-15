@@ -91,9 +91,10 @@ export function create(container) {
   function teardown(slot) {
     for (const url of slot.blobUrls) URL.revokeObjectURL(url);
     slot.blobUrls = [];
+    slot.blobs.clear();
     if (slot.root) slot.root.replaceChildren();
     slot.filled = false;
-    slot.started = false;
+    slot.pending = null;
   }
 
   // A resource inside the archive becomes a blob: URL. Tracked per chapter so it
@@ -203,10 +204,17 @@ export function create(container) {
     return sheets;
   }
 
-  async function fill(slot) {
-    if (slot.started) return;
-    slot.started = true;
+  // Every caller of a chapter gets the same promise for it, and it resolves only
+  // once that chapter is actually on screen. A plain "already started" guard is
+  // not enough: the observer starts a chapter, then show() is called for the same
+  // one and returns immediately, handing back a shadow root that is still empty.
+  // core/text-walk then walks nothing and the chapter silently loses its text.
+  function fill(slot) {
+    if (!slot.pending) slot.pending = doFill(slot);
+    return slot.pending;
+  }
 
+  async function doFill(slot) {
     const item = epub.spine[slot.section];
     if (!item.present) {
       // Section 8: a chapter missing from the archive costs its own slot and
@@ -258,6 +266,12 @@ export function create(container) {
       slot.el.classList.remove("loading");
       slot.el.style.minHeight = "";
       slot.filled = true;
+
+      // A chapter can be filled more than once, because it is torn down when it
+      // scrolls far away. Anything holding references into its DOM — the text
+      // model's words — has to hear about that. The renderer does not know who is
+      // listening or what they do with it.
+      api.onFill?.(slot.section, slot.root);
     } catch (err) {
       slot.el.classList.add("failed");
       slot.el.classList.remove("loading");
@@ -280,7 +294,7 @@ export function create(container) {
         root: null,
         blobs: new Map(),
         blobUrls: [],
-        started: false,
+        pending: null,
         filled: false,
       });
       visibility.observe(el);
@@ -318,6 +332,10 @@ export function create(container) {
   });
 
   const api = {
+    // Set by the viewer: called with (section, shadowRoot) every time a chapter
+    // finishes rendering, including every re-render after a teardown.
+    onFill: null,
+
     load(loaded) {
       epub = loaded;
       reset();

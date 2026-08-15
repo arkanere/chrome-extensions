@@ -2,12 +2,23 @@
 
 import * as source from "./core/source.js";
 import * as epubReaderCore from "./core/epub.js";
+import * as textWalk from "./core/text-walk.js";
+import * as modelFactory from "./core/document-model.js";
 import * as rendererFactory from "./view/renderer.js";
 
 const titleEl = document.getElementById("title");
 const noticeEl = document.getElementById("notice");
 const chaptersEl = document.getElementById("chapters");
 const renderer = rendererFactory.create(chaptersEl);
+
+// A chapter that scrolls far away is torn down, and comes back built from new
+// text nodes. The words the model holds for it would then point into a document
+// fragment nothing can see, so they are rebound to the rebuilt chapter here.
+// Neither module knows about the other: the renderer reports that a chapter was
+// filled, and the model is handed runs, exactly as on the first pass.
+renderer.onFill = (n, root) => {
+  if (model) model.rebindSection(n, textWalk.walk(root));
+};
 
 function notice(html, isError) {
   noticeEl.hidden = false;
@@ -30,10 +41,25 @@ function sourceUrl() {
 
 let doc = null;
 let book = null;
+let model = null;
+
+// The model's text source (section 3's one new arrow): the renderer puts a
+// chapter on screen, core/text-walk turns what it rendered into runs, and the
+// model never learns that a DOM was involved. A chapter that failed to render has
+// no shadow root and contributes no text rather than failing the book.
+function textSource(loaded) {
+  return {
+    sectionCount: loaded.sectionCount,
+    async runs(n) {
+      return textWalk.walk(await renderer.show(n));
+    },
+  };
+}
 
 async function show(loaded) {
   doc = loaded;
   book = null;
+  model = null;
   titleEl.textContent = doc.label;
   clearNotice();
 
@@ -52,6 +78,7 @@ async function show(loaded) {
   }
 
   renderer.load(book);
+  model = modelFactory.create(textSource(book));
 
   const missing = book.spine.filter((s) => !s.present);
   if (missing.length) {
@@ -66,6 +93,12 @@ async function show(loaded) {
     `${book.sectionCount} sections, key ${doc.key.slice(0, 12)}…. ` +
     `Run epubReader.spine() to list them.`,
   );
+
+  // Section 8's "book with no readable text" row. The probe renders the first few
+  // chapters, which is work the reader would do a moment later anyway.
+  if (!(await model.hasText())) {
+    notice("This book contains no readable text, so it cannot be read aloud.", true);
+  }
 }
 
 async function loadFile(file) {
@@ -166,6 +199,9 @@ window.epubReader = {
   get renderer() {
     return renderer;
   },
+  get model() {
+    return model;
+  },
 
   // epubReader.render(n) — force a chapter to render without scrolling to it.
   render: (n) => renderer.show(n),
@@ -183,6 +219,34 @@ window.epubReader = {
       })),
     );
     return book.spine;
+  },
+
+  // epubReader.sentences(n) — the sentences of chapter n, as phase 4's exit
+  // criteria ask for them. Renders and walks the chapter first if it has not
+  // been read yet.
+  async sentences(n = 0) {
+    if (!model) return console.warn("[epub-reader] no book loaded");
+    await model.ensureSections(n + 1);
+
+    const found = model.sentencesInSection(n);
+    console.table(
+      found.map((s) => ({
+        id: s.id,
+        start: s.start,
+        words: s.words.length,
+        text: s.text.length > 80 ? `${s.text.slice(0, 77)}…` : s.text,
+      })),
+    );
+
+    const lengths = found.map((s) => s.words.length).sort((a, b) => a - b);
+    if (lengths.length) {
+      console.log(
+        `[epub-reader] chapter ${n}: ${found.length} sentences, ` +
+        `median ${lengths[Math.floor(lengths.length / 2)]} words, ` +
+        `longest ${lengths[lengths.length - 1]}`,
+      );
+    }
+    return found;
   },
 };
 
