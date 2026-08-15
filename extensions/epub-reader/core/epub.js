@@ -139,12 +139,17 @@ async function readEntry(zip, path) {
 
 // ---------------------------------------------------------------- XML helpers
 
-// Element lookup is always by local name in any namespace. Two of the 113 test
-// books prefix every OPF element (<opf:spine>, <ns0:itemref>); on those,
-// getElementsByTagName returns nothing and the book opens blank rather than
-// failing (2.5, finding 3).
+// Element lookup is always by local name, ignoring the namespace prefix. Two of
+// the 113 test books prefix every OPF element (<opf:spine>, <ns0:itemref>); on
+// those, getElementsByTagName returns nothing and the book opens blank rather
+// than failing (2.5, finding 3).
+//
+// Written as a filter on localName rather than getElementsByTagNameNS("*", name)
+// because it depends on no namespace subtleties at all — the wildcard form is
+// correct in Chrome but is the kind of call whose behaviour varies between DOM
+// implementations, and this one cannot be read two ways.
 function tags(node, name) {
-  return [...node.getElementsByTagNameNS("*", name)];
+  return [...node.getElementsByTagName("*")].filter((el) => el.localName === name);
 }
 
 function firstText(node, name) {
@@ -267,19 +272,24 @@ export async function open(buffer) {
       const bytes = await readEntry(zip, item.path);
       if (!bytes) throw new Error(`chapter ${item.path} is missing from the archive`);
 
-      const type = item.mediaType === "text/html" ? "text/html" : "application/xhtml+xml";
-      const doc = new DOMParser().parseFromString(
-        new TextDecoder("utf-8").decode(bytes),
-        type,
-      );
+      const text = new TextDecoder("utf-8").decode(bytes);
+      const asHtml = () => new DOMParser().parseFromString(text, "text/html");
+      if (item.mediaType === "text/html") return asHtml();
 
-      // An XHTML parse error is recoverable: the same bytes read as HTML almost
-      // always give the right document, and a chapter shown imperfectly beats a
-      // chapter not shown.
-      if (doc.getElementsByTagName("parsererror").length) {
-        return new DOMParser().parseFromString(new TextDecoder("utf-8").decode(bytes), "text/html");
+      // An XHTML parse error is recoverable, and worth recovering from: real
+      // books contain chapters with mismatched tags, and one such chapter turned
+      // up in the 113-book corpus. Read as HTML the same bytes almost always give
+      // the right document, because the HTML parser is required to repair rather
+      // than reject. A chapter shown imperfectly beats a chapter not shown.
+      //
+      // Chrome signals the failure by returning a document containing
+      // <parsererror>; a stricter parser may throw instead. Both end up here.
+      try {
+        const doc = new DOMParser().parseFromString(text, "application/xhtml+xml");
+        return tags(doc, "parsererror").length ? asHtml() : doc;
+      } catch {
+        return asHtml();
       }
-      return doc;
     },
 
     // Images, fonts, stylesheets — anything the renderer needs to resolve a URL to.

@@ -14,7 +14,7 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 |---|---|---|
 | 0 — ZIP and DRM probe | **done** | All 113 test books open by hand-rolled ZIP; nothing vendored. Two surprises: OPF elements can be namespace-prefixed, and `encryption.xml` usually means font obfuscation, not DRM. See 2.5 |
 | 1 — Shell, entry points, viewer page | **built, not yet confirmed in Chrome** | Loading an unpacked extension cannot be automated, so the exit criteria and open question 3 are still open |
-| 2 — `core/epub.js`: ZIP, OPF, spine | **built, not yet confirmed in Chrome** | Carries phase 0's four findings. The ZIP half is the probe's, already exercised on 113 books; the `DOMParser` half has only ever run in Chrome's absence |
+| 2 — `core/epub.js`: ZIP, OPF, spine | **built, exercised on all 113 books outside Chrome** | Carries phase 0's findings and added a fifth: a malformed chapter needs the HTML-parser fallback. Both prefixed books yield full spines; the font-obfuscated book opens. Still needs the Chrome pass |
 | 3 — Render chapters | **not started** | The one genuinely new piece of engineering. Answers open question 4 |
 | 4 — Text model | **not started** | Half of it is copied from pdf-reader |
 | 5 — Audio | **not started** | Two files copied verbatim, then wiring |
@@ -144,7 +144,17 @@ doc.getElementsByTagNameNS("*", "spine")   // not getElementsByTagName("spine")
 
 The same applies to `manifest`, `item`, `itemref`, `package` and the `dc:` metadata. This is the single easiest way to get phase 2 wrong.
 
+Phase 2 ended up going one step further and filtering on `localName` instead:
+
+```js
+[...node.getElementsByTagName("*")].filter((el) => el.localName === name)
+```
+
+`getElementsByTagNameNS("*", …)` is correct in Chrome, but it is exactly the kind of call whose behaviour differs between DOM implementations — of the two used to check this module outside Chrome, one returned nothing for it and the other returned nothing for `getElementsByTagName("*")` either. Matching `localName` depends on no namespace subtleties at all and cannot be read two ways. The OPFs are small enough that walking them costs nothing.
+
 **4. A spine item can be missing from the archive.** Two books (the same title twice) list a chapter in the spine that simply is not in the ZIP. This makes section 8's "skip it, mark the slot failed, keep the rest readable" rule **load-bearing rather than defensive** — it fires on 2 % of a real shelf.
+
+**5. A chapter can be malformed XHTML** (found in phase 2, running `core/epub.js` over the same corpus). *The Society of Mind* has a chapter closing a `<p>` over an open `<span>`. XHTML is XML, so a strict parse rejects it outright. Re-reading the same bytes as `text/html` recovers it, because the HTML parser is *required* to repair rather than reject. `section()` therefore falls back to an HTML parse — this is not defensive coding, it is the only way that book opens.
 
 #### `encryption.xml` does not mean DRM
 
@@ -283,11 +293,22 @@ interface Epub {
   sectionCount: number                              // spine length
   title: string
   encrypted: boolean                                // DRM: a content document is encrypted (2.5)
+  spine: SpineItem[]                                // reading order, for the renderer and the debug object
   section(n: number): Promise<Document>             // parsed XHTML for spine item n
-  resource(path: string): Promise<Uint8Array>       // images, fonts, CSS
+  resource(path: string): Promise<Uint8Array | null>  // images, fonts, CSS
   contentType(path: string): string
+  resolve(base: string, href: string): string       // href inside a chapter -> archive path
+}
+
+interface SpineItem {
+  path: string
+  mediaType: string
+  present: boolean                                  // false if absent from the archive (2.5, finding 4)
+  byteLength: number
 }
 ```
+
+`spine` and `resolve` were added while building phase 2: the renderer needs the reading order to create one div per chapter before any of them is filled, and it needs to turn a relative `src` inside a chapter into an archive path without knowing where the OPF lives. `resource` returns `null` rather than throwing for a missing file, because a book referencing an image it does not contain should lose the image, not the chapter.
 
 ### 5.3 Position events — unchanged
 
