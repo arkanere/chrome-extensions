@@ -12,7 +12,7 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 
 | Phase | State | Notes |
 |---|---|---|
-| 0 — ZIP and DRM probe | **not started** | Answers open questions 1 and 2 |
+| 0 — ZIP and DRM probe | **done** | All 113 test books open by hand-rolled ZIP; nothing vendored. Two surprises: OPF elements can be namespace-prefixed, and `encryption.xml` usually means font obfuscation, not DRM. See 2.5 |
 | 1 — Shell, entry points, viewer page | **not started** | Answers open question 3 |
 | 2 — `core/epub.js`: ZIP, OPF, spine | **not started** | |
 | 3 — Render chapters | **not started** | The one genuinely new piece of engineering. Answers open question 4 |
@@ -115,7 +115,50 @@ Unlike a PDF, an EPUB ships stylesheets that were written to control a whole pag
 
 ### 2.5 Phase 0's findings
 
-*(To be filled in by phase 0: one row per test book — producer, compression methods seen, zip64 present, opened yes/no, `encryption.xml` present.)*
+**The test corpus** is `~/Desktop/Reading` — **113 EPUBs**, mostly technical and trade non-fiction, a wide producer spread. "Every test book" throughout this document means that folder. The probe script was throwaway and is gone; its findings are below.
+
+**All 113 opened with the hand-rolled ZIP reader.** No book needed anything `DecompressionStream` does not provide.
+
+| Measure | Result across 113 books |
+|---|---|
+| Compression methods | **stored (0) and deflate (8) only** — nothing else, in any book |
+| zip64 | **0 books**. Largest archive is 14 MB, far under the 4 GB threshold |
+| Data descriptors (flag bit 3) | **1 book**. Harmless — see below |
+| `META-INF/encryption.xml` | **1 book**, and it is *not* DRM — see below |
+| EPUB version | 81 × EPUB 2, 32 × EPUB 3 |
+| Producer | 50 × Calibre, 43 × no contributor recorded, 7 × Epubor, rest one-offs (Pages, Smashing, InDesign-ish) |
+| Spine length | min 2, median 32, **max 224** |
+| Total XHTML per book | min 146 KB, median 738 KB, **max 14 MB** |
+
+Four things the corpus taught that the design did not anticipate:
+
+**1. The local header must be re-read to find an entry's data.** A central directory entry's name and extra-field lengths need not match those in the local file header, so the data offset has to be computed as `localOffset + 30 + localNameLen + localExtraLen`, reading those two lengths from the local header itself. Using the central directory's lengths gives a byte offset that is wrong on some books.
+
+**2. Data descriptors are a non-issue.** The one book that sets flag bit 3 reads correctly, because the sizes in the *central directory* are always authoritative and filled in — the descriptor exists for a streaming writer's benefit, not a reader's. Since we already read sizes from the central directory, there is nothing to handle.
+
+**3. OPF elements can be namespace-prefixed.** Two books ship `<opf:spine>` / `<ns0:itemref>` rather than bare element names. `getElementsByTagName("spine")` returns nothing for these in an XML document, which silently produces an **empty spine and a blank book** rather than an error. `core/epub.js` must select by local name in any namespace:
+
+```js
+doc.getElementsByTagNameNS("*", "spine")   // not getElementsByTagName("spine")
+```
+
+The same applies to `manifest`, `item`, `itemref`, `package` and the `dc:` metadata. This is the single easiest way to get phase 2 wrong.
+
+**4. A spine item can be missing from the archive.** Two books (the same title twice) list a chapter in the spine that simply is not in the ZIP. This makes section 8's "skip it, mark the slot failed, keep the rest readable" rule **load-bearing rather than defensive** — it fires on 2 % of a real shelf.
+
+#### `encryption.xml` does not mean DRM
+
+The one book carrying `META-INF/encryption.xml` is **fully readable**. Its encryption block covers only `fonts/*.otf`, with `Algorithm="http://ns.adobe.com/pdf/enc#RC"` — this is Adobe **font obfuscation**, a scheme for satisfying font licences, and it is common in commercially produced EPUBs. The OPF, the spine and every content document are plain.
+
+So the stance written in open question 2 was wrong, and taking it literally would have refused to open a perfectly good book. The rule `core/epub.js` uses instead:
+
+- Parse `encryption.xml` and collect every `<CipherReference URI="…">`.
+- **DRM** = an encrypted URI that is a content document — the OPF, or any spine item.
+- **Font obfuscation** = every encrypted URI is a resource that is not in the spine. The book opens normally; an obfuscated font simply fails to load and the reader falls back to its own font, which is what we want anyway.
+
+Caveat worth stating plainly: this rule is derived from a corpus with **exactly one** encrypted book in it. No genuinely DRM'd book was available to test the true-positive side, so "we detect ADEPT DRM" remains reasoning, not measurement. The failure mode is at least the safe one — an unopenable book fails at "no OPF" or "not a ZIP" regardless.
+
+**Note on where this ran.** The probe ran in node 24, not Chrome, because `DecompressionStream('deflate-raw')`, `DataView`, `Blob` and `TextDecoder` are the same Web APIs in both and node could sweep 113 books unattended. Only the XML scraping differed (regex there, `DOMParser` in the real thing), which is why finding 3 above matters. Chrome confirmation of this layer comes in phase 2, against the same corpus.
 
 ## 3. Module map
 
@@ -239,7 +282,7 @@ Swapping `chrome.tts` for Piper or Kokoro later should still touch this file and
 interface Epub {
   sectionCount: number                              // spine length
   title: string
-  encrypted: boolean                                // META-INF/encryption.xml present
+  encrypted: boolean                                // DRM: a content document is encrypted (2.5)
   section(n: number): Promise<Document>             // parsed XHTML for spine item n
   resource(path: string): Promise<Uint8Array>       // images, fonts, CSS
   contentType(path: string): string
@@ -279,7 +322,8 @@ Voices without word-boundary events are hidden from the picker. If step 3 is all
 | Case | Behaviour |
 |---|---|
 | EPUB downloaded instead of navigated to | Expected to be the *common* case, not the exception (see 9). The file picker, the toolbar button, the context menu and drag-and-drop are all first-class ways in |
-| **DRM'd book** | `META-INF/encryption.xml` present, or the OPF unreadable. Say so plainly — "This book is DRM-protected and cannot be opened" — and do not offer playback. Same shape as pdf-reader's scanned-PDF notice |
+| **DRM'd book** | An encrypted content document (2.5), or the OPF unreadable. Say so plainly — "This book is DRM-protected and cannot be opened" — and do not offer playback. Same shape as pdf-reader's scanned-PDF notice |
+| Obfuscated fonts | `encryption.xml` covering only non-spine resources. **Open the book normally.** The font fails to decode and the reader's own font is used, which is the preferred rendering anyway |
 | Malformed ZIP or missing OPF | One notice naming what was missing. No partial render |
 | A single chapter fails to parse | Skip it, mark the slot failed, keep the rest of the book readable. A book is not one document the way a PDF is |
 | Book with no readable text | Same `hasText` probe as pdf-reader, over the first few spine items |
@@ -296,7 +340,7 @@ Voices without word-boundary events are hidden from the picker. If step 3 is all
 
 **Scrolling column, not pagination.** Decided with the user. It matches pdf-reader, it keeps scroll-follow and click-to-read simple, and it avoids the `column-width` layout tricks that paginated readers need.
 
-**Read the ZIP by hand.** Chrome has `DecompressionStream`; an EPUB uses stored and deflate only. ~150 lines against a vendored library plus its license — and it keeps the "nothing vendored, no build step" property that the presence of pdf.js in the sibling extension already spoils. Phase 0 can overturn this, and should if any real book fails.
+**Read the ZIP by hand. Confirmed in phase 0 — zip.js is not vendored.** Chrome has `DecompressionStream`; an EPUB uses stored and deflate only. ~150 lines against a vendored library plus its license — and it keeps the "nothing vendored, no build step" property that the presence of pdf.js in the sibling extension already spoils. All 113 test books opened this way, so there is no `lib/` in this extension.
 
 **Shadow DOM per chapter, not a sandboxed iframe.** Both isolate the book's CSS. An iframe isolates too much: text selection would not cross chapters, `caretPositionFromPoint` would need per-frame coordinate translation, scroll-follow would have to measure through a frame boundary, and the highlight API would need registering per frame. Shadow roots let selection, ranges and hit-testing keep working on one document. The price is that the book's CSS is only *scoped*, not sandboxed, and `<script>` must be stripped explicitly rather than left to the frame's sandbox — cheap, and CSP is a second line of defence.
 
@@ -310,8 +354,8 @@ Voices without word-boundary events are hidden from the picker. If step 3 is all
 
 None of these blocks starting. Each names the phase that answers it.
 
-1. **Does a hand-rolled ZIP read open every real book?** → **Phase 0.** Stance: yes for stored+deflate, which is all EPUB uses. Fallback is vendoring zip.js. Watch for: zip64 in very large books, and data descriptors on streamed archives.
-2. **Does `META-INF/encryption.xml` reliably identify a DRM'd book?** → **Phase 0.** Stance: yes for Adobe ADEPT. Kindle files are not EPUBs at all and will fail earlier, at "not a ZIP".
+1. ~~**Does a hand-rolled ZIP read open every real book?**~~ → **Answered in phase 0: yes.** All 113 test books open. Stored and deflate are the only methods present, no zip64, and data descriptors need no handling because the central directory carries the real sizes. Nothing vendored. See 2.5.
+2. ~~**Does `META-INF/encryption.xml` reliably identify a DRM'd book?**~~ → **Answered in phase 0: no — and the original stance would have refused a readable book.** `encryption.xml` is also how Adobe font obfuscation is declared, which is common and harmless. The test is whether an encrypted `CipherReference` names a *content document*, not whether the file exists. See 2.5. Untested on a true DRM'd book, none being available.
 3. **Does the `declarativeNetRequest` redirect fire on `.epub` at all?** → **Phase 1.** Stance: **probably not**, because Chrome downloads `.epub` rather than navigating to it. Unlike pdf-reader, where interception was the primary path and manual entry the fallback, here the file picker is the primary path and interception is a bonus. Design accordingly and do not be disappointed.
 4. **Does an injected `<style>` survive the extension page's CSP, inside a shadow root?** → **Phase 3.** Stance: yes — MV3's default `extension_pages` policy constrains `script-src` and `object-src`, not styles. If it does not, the fallback is `CSSStyleSheet` + `adoptedStyleSheets`, which is arguably the better implementation anyway.
 5. **Do `::highlight()` pseudo-elements resolve for ranges inside a shadow root?** → **Phase 6.** Stance: the registration is global (`CSS.highlights`) but the *styling* resolves against the tree the range lives in, so the highlight CSS almost certainly has to be inside each shadow root too. Cheap to do; confirm rather than assume. If the API misbehaves across shadow boundaries entirely, the fallback is pdf-reader's original approach — an overlay layer painted from `range.getClientRects()` — which is a known-good design already written once.
@@ -404,17 +448,21 @@ For each book record: producer (from the OPF), compression methods seen, zip64 p
 `core/epub.js` is the only file that knows the container format, and implements section 5.2:
 
 - End-of-central-directory record → central directory → entry table.
+- **Read each entry's data offset from its local header**, not from the central directory's name/extra lengths (2.5, finding 1).
 - `META-INF/container.xml` → the OPF path.
 - The OPF → `<manifest>` (id → href, media-type) and `<spine>` (idrefs in reading order), plus `dc:title`.
-- Resolve every href relative to the OPF's directory. Getting this wrong is the classic EPUB bug.
+- **Select every element with `getElementsByTagNameNS("*", …)`** — two test books prefix their OPF elements, and `getElementsByTagName` yields a silently empty spine (2.5, finding 3).
+- Resolve every href relative to the OPF's directory, and `decodeURIComponent` it. Getting this wrong is the classic EPUB bug.
 - `DOMParser` for all three XML documents.
-- `encrypted`: does `META-INF/encryption.xml` exist.
+- `encrypted`: an encrypted `CipherReference` naming the OPF or a spine item — **not** the mere presence of `encryption.xml` (2.5).
 
 **Exit criteria**
 
 - `console.table` of the spine for each test book: index, href, media type, byte length — in correct reading order.
-- Title and section count correct.
-- A DRM'd book reports `encrypted: true` and does not pretend to open.
+- Title and section count correct. Spine lengths match 2.5's table — including the 224-item book.
+- Both namespace-prefixed books yield a non-empty spine.
+- The font-obfuscated book reports `encrypted: false` and opens.
+- A spine item absent from the archive is reported, not thrown on.
 - The debug object exposes `epubReader.spine()` for this.
 
 ---
