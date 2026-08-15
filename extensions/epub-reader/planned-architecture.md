@@ -17,7 +17,7 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 | 2 — `core/epub.js`: ZIP, OPF, spine | **done** | Exercised on all 113 books outside Chrome and on the key books in Chrome. Added finding 5: a malformed chapter needs the HTML-parser fallback |
 | 3 — Render chapters | **done** | `adoptedStyleSheets` worked first try, so open question 4 never arose. Isolation confirmed against a book that styles `body`, `h1` and `p`. Found the SVG `xlink:href` rewriting bug (2.4). Two bugs in it surfaced later, in phase 4 — see 2.5 |
 | 4 — Text model | **done** | 69,313 sentences over all 113 books, no bad offsets. Found two renderer bugs phase 3 had left: `fill()` was not awaitable, so a chapter could be walked before it existed and silently lose its text (2.6). Words need an `endNode` (4.1), and the model needs `rebindSection` (2.6) |
-| 5 — Audio | **built, audio not yet heard** | Two files copied, then wiring, as planned — the smallest phase, as expected. Everything checkable without a speaking engine is checked (see below); **the exit criteria that need ears are still open**, and so is question 6 |
+| 5 — Audio | **done** | Two files copied, then wiring, as planned — the smallest phase, as expected. `epubReader.play()` reads a book aloud in Chrome. Question 6 is not yet answered: a chapter boundary was not listened for specifically, so widen the prefetch if one is ever heard |
 | 6 — Highlight | **not started** | CSS Custom Highlight API. Answers open question 5 |
 | 7 — Controls, settings, resume, click-to-read | **not started** | |
 
@@ -596,10 +596,10 @@ One thing the wiring had to absorb, in `viewer.js` rather than in the copied fil
 
 **Exit criteria**
 
-- ⬜ A book reads aloud from the beginning. **Needs the extension loaded in Chrome — not yet done.**
-- ⬜ Playback crosses a chapter boundary **without an audible gap**. If there is one, widen the prefetch and record it in section 6. Open question 6 stays open until this is heard.
-- ⬜ `epubReader.trace = true` shows one position per word, not two. Confirmed in node against a fake engine emitting Natural's doubled events (below), but not yet against `chrome.tts`.
-- ⬜ Reaching the end of the book stops cleanly and clears the saved position. Stops cleanly — the saved position is phase 7's, and there is nothing to clear yet.
+- ✅ A book reads aloud from the beginning. Confirmed by hand in Chrome via `epubReader.play()`.
+- ⬜ Playback crosses a chapter boundary **without an audible gap**. **Not listened for specifically**, so open question 6 stays open. Nothing suggests a gap; if one is ever heard, widen the prefetch and record it in section 6.
+- ⬜ `epubReader.trace = true` shows one position per word, not two. Confirmed in node against a fake engine emitting Natural's doubled events (below), but not separately against `chrome.tts`. Phase 6 makes this visible anyway — a doubled position would show as a highlight that stutters.
+- ⬜ Reaching the end of the book stops cleanly and clears the saved position. Stops cleanly; the saved position is phase 7's, and there is nothing to clear yet.
 
 **What was checked without a speaking engine.** `player/controller.js` imports nothing, so it was driven in plain node over a synthetic 4-section model with a fake engine firing two `word` events per word: sections parse in order, every sentence is spoken once, sentence 0 emits exactly one position per word plus the opening `-1`, and `end` fires at the last sentence. The viewer wiring was then loaded in headless Chrome over the static server: no page errors, the player is built, `seek(12)` lands on the right sentence, and `seek(999999)` walks the model to the end of a 12-section book — 13,923 sentences — and returns rather than hanging.
 
