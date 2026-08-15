@@ -129,6 +129,12 @@ main {
   width: min(100% - 40px, 46rem);
   background: var(--panel);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+
+  /* Set on the host, inherited through the shadow boundary — this is what makes
+     the header's two buttons reflow the book with no re-render. */
+  font-size: var(--reading-font-size);
+  font-family: Georgia, "Iowan Old Style", Charter, serif;
+  color: var(--ink);
 }
 .chapter.loading { min-height: 60vh; }
 .chapter.failed { outline: 2px solid #c62828; }

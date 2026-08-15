@@ -13,9 +13,9 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 | Phase | State | Notes |
 |---|---|---|
 | 0 — ZIP and DRM probe | **done** | All 113 test books open by hand-rolled ZIP; nothing vendored. Two surprises: OPF elements can be namespace-prefixed, and `encryption.xml` usually means font obfuscation, not DRM. See 2.5 |
-| 1 — Shell, entry points, viewer page | **built, not yet confirmed in Chrome** | Loading an unpacked extension cannot be automated, so the exit criteria and open question 3 are still open |
-| 2 — `core/epub.js`: ZIP, OPF, spine | **built, exercised on all 113 books outside Chrome** | Carries phase 0's findings and added a fifth: a malformed chapter needs the HTML-parser fallback. Both prefixed books yield full spines; the font-obfuscated book opens. Still needs the Chrome pass |
-| 3 — Render chapters | **not started** | The one genuinely new piece of engineering. Answers open question 4 |
+| 1 — Shell, entry points, viewer page | **mostly done** | Viewer, picker and drag-and-drop confirmed in Chrome. Still open: the toolbar button, the context menu, and open question 3. A `file://` source failed to read on this machine even with the switch on — see below |
+| 2 — `core/epub.js`: ZIP, OPF, spine | **done** | Exercised on all 113 books outside Chrome and on the key books in Chrome. Added finding 5: a malformed chapter needs the HTML-parser fallback |
+| 3 — Render chapters | **done** | `adoptedStyleSheets` worked first try, so open question 4 never arose. Isolation confirmed against a book that styles `body`, `h1` and `p`. Found the SVG `xlink:href` rewriting bug (2.4) |
 | 4 — Text model | **not started** | Half of it is copied from pdf-reader |
 | 5 — Audio | **not started** | Two files copied verbatim, then wiring |
 | 6 — Highlight | **not started** | CSS Custom Highlight API. Answers open question 5 |
@@ -112,6 +112,11 @@ This is stated as a **plan, not a measurement** — phase 0 exists to check it a
 Unlike a PDF, an EPUB ships stylesheets that were written to control a whole page. Dropping a chapter's markup and its `<style>` into our viewer would let the book restyle our header, our controls and our notice bar.
 
 **Consequence:** every chapter is rendered inside a **shadow root**, with the book's CSS inside it. This is the one genuinely new piece of engineering in the project and the main risk (section 9, phase 3).
+
+**Phase 3 confirmed this works,** and that the isolation is real: with a book loaded whose stylesheets style `body`, `h1` and `p`, the header's `h1`, the buttons and the page background all keep their own computed styles. Two things phase 3 learned in passing:
+
+- **Resource URLs must be rewritten on the `Attr` node, matched by `localName`.** A cover page is usually an SVG `<image xlink:href="cover.jpeg">`. That attribute is namespaced, so a `[xlink\:href]` selector does not match it, and `setAttribute("xlink:href", url)` would add a *second*, unnamespaced attribute beside the original rather than replacing it — leaving the image still pointing at a path that does not resolve. Walking `el.attributes` and assigning `attr.value` keeps whatever namespace the attribute already had.
+- **The book's font sizes have to be overridden, its font families kept.** A book that sets `body { font-size: 12pt }` would otherwise ignore the header's font-size control completely. The base stylesheet forces `font-size: inherit` on the block elements and leaves everything else to the book.
 
 ### 2.5 Phase 0's findings
 
@@ -348,7 +353,7 @@ Voices without word-boundary events are hidden from the picker. If step 3 is all
 | Malformed ZIP or missing OPF | One notice naming what was missing. No partial render |
 | A single chapter fails to parse | Skip it, mark the slot failed, keep the rest of the book readable. A book is not one document the way a PDF is |
 | Book with no readable text | Same `hasText` probe as pdf-reader, over the first few spine items |
-| `file://` without permission | The same explainer pointing at the exact toggle |
+| `file://` without permission | The same explainer pointing at the exact toggle. **Unresolved:** on the development machine a `file://` source still failed to read with **Allow access to file URLs** on, the XHR reporting a bare network error. macOS gating Chrome's access to `~/Desktop` is the leading suspect, but it is not yet confirmed. The picker and drag-and-drop are unaffected, which is why this has not blocked anything |
 | Voice missing at load | Fall through section 7's chain, tell the user which voice is speaking |
 | TTS error mid-book | Stop, keep position, offer resume — position is already on disk |
 | Very large book | Chapters render and parse lazily, as pages did. Blob URLs for a chapter's images are revoked when that chapter is torn down |
@@ -378,7 +383,7 @@ None of these blocks starting. Each names the phase that answers it.
 1. ~~**Does a hand-rolled ZIP read open every real book?**~~ → **Answered in phase 0: yes.** All 113 test books open. Stored and deflate are the only methods present, no zip64, and data descriptors need no handling because the central directory carries the real sizes. Nothing vendored. See 2.5.
 2. ~~**Does `META-INF/encryption.xml` reliably identify a DRM'd book?**~~ → **Answered in phase 0: no — and the original stance would have refused a readable book.** `encryption.xml` is also how Adobe font obfuscation is declared, which is common and harmless. The test is whether an encrypted `CipherReference` names a *content document*, not whether the file exists. See 2.5. Untested on a true DRM'd book, none being available.
 3. **Does the `declarativeNetRequest` redirect fire on `.epub` at all?** → **Phase 1.** Stance: **probably not**, because Chrome downloads `.epub` rather than navigating to it. Unlike pdf-reader, where interception was the primary path and manual entry the fallback, here the file picker is the primary path and interception is a bonus. Design accordingly and do not be disappointed.
-4. **Does an injected `<style>` survive the extension page's CSP, inside a shadow root?** → **Phase 3.** Stance: yes — MV3's default `extension_pages` policy constrains `script-src` and `object-src`, not styles. If it does not, the fallback is `CSSStyleSheet` + `adoptedStyleSheets`, which is arguably the better implementation anyway.
+4. ~~**Does an injected `<style>` survive the extension page's CSP, inside a shadow root?**~~ → **Answered in phase 3: the question never arose.** `CSSStyleSheet` + `adoptedStyleSheets` — named in the original stance as the fallback — was tried first and worked, so no `<style>` element is ever injected and no CSP question is asked. It is also the better implementation: the sheets are constructed objects that can be replaced wholesale, and a book's stylesheet that Chrome rejects can be caught per sheet with `try`/`catch` around `replaceSync`, losing that book's styling rather than the chapter.
 5. **Do `::highlight()` pseudo-elements resolve for ranges inside a shadow root?** → **Phase 6.** Stance: the registration is global (`CSS.highlights`) but the *styling* resolves against the tree the range lives in, so the highlight CSS almost certainly has to be inside each shadow root too. Cheap to do; confirm rather than assume. If the API misbehaves across shadow boundaries entirely, the fallback is pdf-reader's original approach — an overlay layer painted from `range.getClientRects()` — which is a known-good design already written once.
 6. **Is a chapter boundary audible?** → **Phase 5.** Chapters are much larger than pages, so rendering and walking one may not fit inside the current sentence. Stance: prefetch one chapter ahead; widen if it is heard.
 
@@ -391,6 +396,11 @@ Each phase is written to be picked up cold: what to build, which files, and how 
 - **No build step.** Plain ES modules, like every extension in this repo. The TypeScript in sections 4 and 5 is documentation of shape, not code to compile.
 - **Load path.** `chrome://extensions` → Developer mode → Load unpacked → this directory. Reload after every change to `background.js`.
 - **Verified by hand, in Chrome.** There is no test suite. The exit criteria below are the checklist. The exception is `core/document-model.js`, which imports nothing and must be exercised in plain node first — as phase 3 of pdf-reader was.
+- **Two ways to get a book in front of the code**, both used from phase 2 onward:
+  - *The extension proper.* Load unpacked, then open `chrome-extension://<id>/viewer.html` and use the picker or drop a file on it. Note that macOS will not offer Chrome in Finder's "Open With" for `.epub` — Chrome does not declare the type in its `Info.plist`, and an extension cannot add a file association. Double-clicking a book will never route here.
+  - *A static server.* `python3 -m http.server` over a directory symlinking `core/`, `view/` and the viewer files, plus a book or two, runs the same modules in the same browser with none of the extension packaging. It is much faster to iterate against, and — unlike the extension page — it can be driven from a script. Everything except the manifest, the interceptor and the extension's CSP is exercised faithfully. Serve on a **new port** after editing: Chrome caches ES modules aggressively and will silently keep running the old file.
+
+  One caveat found the hard way: a Chrome tab that is not frontmost does not run its rendering lifecycle, so **`IntersectionObserver` never fires** and nothing lazy ever loads. A renderer that looks completely broken under automation may be working perfectly — bring the tab to the front before concluding anything about lazy loading.
 - **Do not skip ahead.** Section 3's arrows are the import rule.
 - **Copy, do not improve.** Where a file is marked "copy from pdf-reader", copy it. Improving it in passing means two files that are almost the same, which is worse than two that are identical.
 

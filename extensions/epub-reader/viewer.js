@@ -2,9 +2,12 @@
 
 import * as source from "./core/source.js";
 import * as epubReaderCore from "./core/epub.js";
+import * as rendererFactory from "./view/renderer.js";
 
 const titleEl = document.getElementById("title");
 const noticeEl = document.getElementById("notice");
+const chaptersEl = document.getElementById("chapters");
+const renderer = rendererFactory.create(chaptersEl);
 
 function notice(html, isError) {
   noticeEl.hidden = false;
@@ -47,6 +50,8 @@ async function show(loaded) {
     console.warn("[epub-reader] DRM: an encrypted content document");
     return;
   }
+
+  renderer.load(book);
 
   const missing = book.spine.filter((s) => !s.present);
   if (missing.length) {
@@ -126,6 +131,31 @@ window.addEventListener("drop", async (e) => {
   if (file) await loadFile(file);
 });
 
+// Font size in place of pdf-reader's zoom (section 9): same two buttons and the
+// same readout, but stepping a custom property the chapters inherit. Text
+// reflows, so there is nothing to re-render and — from phase 6 — no highlight to
+// refresh either.
+const FONT_STEPS = [15, 17, 19, 21, 24, 27, 30];
+let fontIndex = 2;
+
+function applyFontSize() {
+  const px = FONT_STEPS[fontIndex];
+  document.documentElement.style.setProperty("--reading-font-size", `${px}px`);
+  document.getElementById("font-size").textContent = `${Math.round((px / FONT_STEPS[2]) * 100)}%`;
+}
+
+document.getElementById("font-larger").addEventListener("click", () => {
+  fontIndex = Math.min(fontIndex + 1, FONT_STEPS.length - 1);
+  applyFontSize();
+});
+
+document.getElementById("font-smaller").addEventListener("click", () => {
+  fontIndex = Math.max(fontIndex - 1, 0);
+  applyFontSize();
+});
+
+applyFontSize();
+
 // Debug mode: inspect the book from the devtools console. Not a URL flag, because
 // the interceptor appends the source URL raw and anything after it would be read
 // as part of that URL. It grows one entry per phase (section 0).
@@ -133,6 +163,12 @@ window.epubReader = {
   get book() {
     return book;
   },
+  get renderer() {
+    return renderer;
+  },
+
+  // epubReader.render(n) — force a chapter to render without scrolling to it.
+  render: (n) => renderer.show(n),
 
   // epubReader.spine() — the reading order, as phase 2's exit criteria ask for it.
   spine() {
