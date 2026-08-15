@@ -17,7 +17,7 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 | 2 — `core/epub.js`: ZIP, OPF, spine | **done** | Exercised on all 113 books outside Chrome and on the key books in Chrome. Added finding 5: a malformed chapter needs the HTML-parser fallback |
 | 3 — Render chapters | **done** | `adoptedStyleSheets` worked first try, so open question 4 never arose. Isolation confirmed against a book that styles `body`, `h1` and `p`. Found the SVG `xlink:href` rewriting bug (2.4). Two bugs in it surfaced later, in phase 4 — see 2.5 |
 | 4 — Text model | **done** | 69,313 sentences over all 113 books, no bad offsets. Found two renderer bugs phase 3 had left: `fill()` was not awaitable, so a chapter could be walked before it existed and silently lose its text (2.6). Words need an `endNode` (4.1), and the model needs `rebindSection` (2.6) |
-| 5 — Audio | **not started** | Two files copied verbatim, then wiring |
+| 5 — Audio | **built, audio not yet heard** | Two files copied, then wiring, as planned — the smallest phase, as expected. Everything checkable without a speaking engine is checked (see below); **the exit criteria that need ears are still open**, and so is question 6 |
 | 6 — Highlight | **not started** | CSS Custom Highlight API. Answers open question 5 |
 | 7 — Controls, settings, resume, click-to-read | **not started** | |
 
@@ -34,7 +34,7 @@ It is written so a session that has never seen this project can open it cold, re
 
 **The test corpus.** Phase 0 gathers DRM-free books to probe against. Record where they live in 2.6 and reuse the same set in every later phase's exit criteria — "every test book" throughout means that set, so a cold session knows what to run against.
 
-**The debug object.** `window.epubReader` in `viewer.js` grows as the phases do, mirroring pdf-reader's `pdfReader`: phase 2 adds `spine()`, phase 4 adds `sentences()`, phase 5 adds `trace`, phase 6 adds `highlight()`, phase 7 adds `voices()` and `forget()`. Several exit criteria below are written in terms of it, so add each entry in the phase that needs it rather than leaving them all to the end.
+**The debug object.** `window.epubReader` in `viewer.js` grows as the phases do, mirroring pdf-reader's `pdfReader`: phase 2 adds `spine()`, phase 4 adds `sentences()`, phase 5 adds `trace` — and, until phase 7's controls exist, `play()`, `pause()`, `toggle()` and `seek()`, which are the only way to start playback in between — phase 6 adds `highlight()`, phase 7 adds `voices()` and `forget()`. Several exit criteria below are written in terms of it, so add each entry in the phase that needs it rather than leaving them all to the end.
 
 ## 1. What we are building
 
@@ -590,12 +590,18 @@ Then wire them in `viewer.js`, following pdf-reader's `startPlayer` almost line 
 
 The controller's `prefetch` must now pull in the next *chapter*, which means rendering it, not just parsing it (open question 6).
 
+Both files were copied as planned. The controller's only edit is `page` → `section`, plus the index-versus-count arithmetic that comes with it: sections are 0-based and `ensureSections` takes a count, so prefetching section *n* means asking for `n + 1`.
+
+One thing the wiring had to absorb, in `viewer.js` rather than in the copied file. **`speech/adapter.js` cannot even be loaded outside the extension**: its `create(tts = chrome.tts)` default argument throws a `ReferenceError` on a plain page, where `chrome` does not exist at all — which would have taken the whole viewer module down with it and cost us the static server that phases 3 and 4 were checked on. The viewer therefore passes `globalThis.chrome?.tts` and falls back to a three-method stub that reports no voices. The adapter stays byte-identical to pdf-reader's, which was the point.
+
 **Exit criteria**
 
-- A book reads aloud from the beginning.
-- Playback crosses a chapter boundary **without an audible gap**. If there is one, widen the prefetch and record it in section 6.
-- `epubReader.trace = true` shows one position per word, not two.
-- Reaching the end of the book stops cleanly and clears the saved position.
+- ⬜ A book reads aloud from the beginning. **Needs the extension loaded in Chrome — not yet done.**
+- ⬜ Playback crosses a chapter boundary **without an audible gap**. If there is one, widen the prefetch and record it in section 6. Open question 6 stays open until this is heard.
+- ⬜ `epubReader.trace = true` shows one position per word, not two. Confirmed in node against a fake engine emitting Natural's doubled events (below), but not yet against `chrome.tts`.
+- ⬜ Reaching the end of the book stops cleanly and clears the saved position. Stops cleanly — the saved position is phase 7's, and there is nothing to clear yet.
+
+**What was checked without a speaking engine.** `player/controller.js` imports nothing, so it was driven in plain node over a synthetic 4-section model with a fake engine firing two `word` events per word: sections parse in order, every sentence is spoken once, sentence 0 emits exactly one position per word plus the opening `-1`, and `end` fires at the last sentence. The viewer wiring was then loaded in headless Chrome over the static server: no page errors, the player is built, `seek(12)` lands on the right sentence, and `seek(999999)` walks the model to the end of a 12-section book — 13,923 sentences — and returns rather than hanging.
 
 ---
 
