@@ -139,6 +139,12 @@ main {
 .chapter.loading { min-height: 60vh; }
 .chapter.failed { outline: 2px solid #c62828; }
 
+/* Phase 6's highlight is deliberately not here. CSS.highlights is a global
+   registry, but ::highlight() styling resolves against the tree the range lives
+   in — and every range we paint is inside a chapter's shadow root, so a copy of
+   the rules in this file paints nothing at all (measured; question 5). They live
+   in view/renderer.js's BASE_STYLES, which every shadow root adopts. */
+
 /* Drag-and-drop onto the viewer. The picker is the primary way in here, so
    dropping a file on the page is a first-class entry point rather than a nicety. */
 body.dropping::after {

@@ -47,6 +47,19 @@ const BASE_STYLES = `
   :where(body, p, li, div, td) {
     font-size: inherit;
   }
+  /* Phase 6's highlight, and the only copy of these rules in the extension. The
+     ranges the highlighter registers live in this shadow root, and ::highlight()
+     styling resolves against the tree the range is in: recolouring this rule
+     recolours the paint, and recolouring the same rule in viewer.css does
+     nothing at all. Same two colours as pdf-reader's .hl-sentence and .hl-word,
+     so it looks identical — but painted by the browser onto the real glyph box,
+     so none of that file's descender shadow-spread trick is needed. */
+  ::highlight(epub-sentence) {
+    background-color: rgba(255, 214, 102, 0.34);
+  }
+  ::highlight(epub-word) {
+    background-color: rgba(255, 165, 38, 0.6);
+  }
 `;
 
 export function create(container) {

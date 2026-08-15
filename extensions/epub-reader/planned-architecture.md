@@ -18,7 +18,7 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 | 3 — Render chapters | **done** | `adoptedStyleSheets` worked first try, so open question 4 never arose. Isolation confirmed against a book that styles `body`, `h1` and `p`. Found the SVG `xlink:href` rewriting bug (2.4). Two bugs in it surfaced later, in phase 4 — see 2.5 |
 | 4 — Text model | **done** | 69,313 sentences over all 113 books, no bad offsets. Found two renderer bugs phase 3 had left: `fill()` was not awaitable, so a chapter could be walked before it existed and silently lose its text (2.6). Words need an `endNode` (4.1), and the model needs `rebindSection` (2.6) |
 | 5 — Audio | **done** | Two files copied, then wiring, as planned — the smallest phase, as expected. `epubReader.play()` reads a book aloud in Chrome. Question 6 is not yet answered: a chapter boundary was not listened for specifically, so widen the prefetch if one is ever heard |
-| 6 — Highlight | **not started** | CSS Custom Highlight API. Answers open question 5 |
+| 6 — Highlight | **done** | Ranges paint inside shadow roots, but **only** from CSS inside that shadow root — question 5's stance was right, and the document copy of the rules is dead and was removed. Scroll-follow scrolls 4 times over 300 words. Sync with a real voice is still an ear check |
 | 7 — Controls, settings, resume, click-to-read | **not started** | |
 
 ### Working this document
@@ -186,6 +186,16 @@ So the stance written in open question 2 was wrong, and taking it literally woul
 Caveat worth stating plainly: this rule is derived from a corpus with **exactly one** encrypted book in it. No genuinely DRM'd book was available to test the true-positive side, so "we detect ADEPT DRM" remains reasoning, not measurement. The failure mode is at least the safe one — an unopenable book fails at "no OPF" or "not a ZIP" regardless.
 
 **Note on where this ran.** The probe ran in node 24, not Chrome, because `DecompressionStream('deflate-raw')`, `DataView`, `Blob` and `TextDecoder` are the same Web APIs in both and node could sweep 113 books unattended. Only the XML scraping differed (regex there, `DOMParser` in the real thing), which is why finding 3 above matters. Chrome confirmation of this layer comes in phase 2, against the same corpus.
+
+### 2.7 The highlight is painted by the browser, and its CSS lives in the shadow roots
+
+Found in phase 6. `CSS.highlights` is a global registry keyed by name, so it is tempting to read the whole feature as global. It is not: the *registration* is global, the *styling* is not. `::highlight(epub-word)` resolves against the tree the range lives in, and every range this extension paints is inside a chapter's shadow root.
+
+Measured directly, because the obvious test misleads. Deleting the `::highlight` rules from a live sheet — from either tree — leaves the existing paint on screen untouched, which reads as "both copies are optional". Recolouring the rule instead is the honest test: recolouring the copy inside the shadow root turns the painted word green immediately; recolouring the identical rule in `viewer.css` does nothing. So the rules live in `view/renderer.js`'s `BASE_STYLES`, which every shadow root adopts, and `viewer.css` carries none — a copy there is dead code, not a safety net.
+
+Everything else about the API behaved as section 9 hoped. Two `Highlight` objects are registered once at startup and their contents swapped per word, the book's markup is never touched, and **changing the font size mid-sentence needs no redraw call at all** — the ranges are anchored to text nodes and offsets, so the paint follows the reflow on its own. pdf-reader's `refresh()`-after-zoom path has no equivalent here.
+
+The one thing that does need a redraw is 2.5's teardown: a torn-down chapter's nodes are gone, so `rangeFor` refuses to build a range from a node whose `isConnected` is false. `viewer.js` calls `highlighter.refresh()` after `rebindSection` succeeds for the section on screen, and the paint comes back with the rebuilt nodes.
 
 ## 3. Module map
 
@@ -410,7 +420,7 @@ None of these blocks starting. Each names the phase that answers it.
 2. ~~**Does `META-INF/encryption.xml` reliably identify a DRM'd book?**~~ → **Answered in phase 0: no — and the original stance would have refused a readable book.** `encryption.xml` is also how Adobe font obfuscation is declared, which is common and harmless. The test is whether an encrypted `CipherReference` names a *content document*, not whether the file exists. See 2.6. Untested on a true DRM'd book, none being available.
 3. **Does the `declarativeNetRequest` redirect fire on `.epub` at all?** → **Phase 1.** Stance: **probably not**, because Chrome downloads `.epub` rather than navigating to it. Unlike pdf-reader, where interception was the primary path and manual entry the fallback, here the file picker is the primary path and interception is a bonus. Design accordingly and do not be disappointed.
 4. ~~**Does an injected `<style>` survive the extension page's CSP, inside a shadow root?**~~ → **Answered in phase 3: the question never arose.** `CSSStyleSheet` + `adoptedStyleSheets` — named in the original stance as the fallback — was tried first and worked, so no `<style>` element is ever injected and no CSP question is asked. It is also the better implementation: the sheets are constructed objects that can be replaced wholesale, and a book's stylesheet that Chrome rejects can be caught per sheet with `try`/`catch` around `replaceSync`, losing that book's styling rather than the chapter.
-5. **Do `::highlight()` pseudo-elements resolve for ranges inside a shadow root?** → **Phase 6.** Stance: the registration is global (`CSS.highlights`) but the *styling* resolves against the tree the range lives in, so the highlight CSS almost certainly has to be inside each shadow root too. Cheap to do; confirm rather than assume. If the API misbehaves across shadow boundaries entirely, the fallback is pdf-reader's original approach — an overlay layer painted from `range.getClientRects()` — which is a known-good design already written once.
+5. ~~**Do `::highlight()` pseudo-elements resolve for ranges inside a shadow root?**~~ → **Answered in phase 6: yes, and the stance was right about where the CSS has to live.** The registration is global; the styling resolves against the tree the range is in. The rules must be inside each shadow root, and a copy in `viewer.css` paints nothing, so there is none — see 2.7. No overlay fallback was needed.
 6. **Is a chapter boundary audible?** → **Phase 5.** Chapters are much larger than pages, so rendering and walking one may not fit inside the current sentence. Stance: prefetch one chapter ahead; widen if it is heard.
 
 ## 11. Build phases
@@ -609,7 +619,7 @@ One thing the wiring had to absorb, in `viewer.js` rather than in the copied fil
 
 **Answers** open question 5.
 
-**Files:** `view/highlighter.js`, highlight CSS in `viewer.css` and in the per-chapter base stylesheet
+**Files:** `view/highlighter.js`, highlight CSS in the per-chapter base stylesheet (**only** there — 2.7)
 
 Build two `Range`s from the current `Word` and its `Sentence` and register them:
 
@@ -624,13 +634,17 @@ CSS.highlights.set("epub-sentence", new Highlight(sentenceRange));
 
 **Kept unchanged from pdf-reader:** the scroll-follow logic, constants and all — `HEADER`, `BOTTOM_MARGIN`, `SCROLL_TARGET`, `SCROLL_SETTLE_MS`, and the rule that we only scroll when the word has actually left the comfortable band. Only its measurement source changes, from overlay boxes to `range.getBoundingClientRect()`.
 
+All of that held. The two `Highlight` objects are built once and their contents swapped per word, rather than a new `Highlight` per position — the registration under a name never changes, only what is in it. `rangeFor` refuses any word whose nodes are no longer `isConnected`, which is 2.5's torn-down chapter: painting into a detached node is invisible, and measuring one gives zeros, which would scroll the page to the top.
+
 **Exit criteria**
 
-- The spoken word is highlighted in sync, and the sentence band is correct across line wraps.
-- The page follows without jumping, and does not scroll on every word.
-- Changing the font size mid-sentence keeps the highlight on the right word with no redraw call.
-- A word spanning an inline element highlights as one unit.
-- **Record in section 10, question 5** where the highlight CSS had to live.
+- ⚠️ The spoken word is highlighted in sync, and the sentence band is correct across line wraps. **The band is correct across wraps** — checked by screenshot, one contiguous run per line with no gap at the spaces. *In sync* is the half a script cannot judge: it needs an ear on a real voice, and is the one thing left for a by-hand pass in Chrome.
+- ✅ The page follows without jumping, and does not scroll on every word. Stepped through 300 consecutive words at 60 ms each — faster than any voice speaks — and `window.scrollBy` was called **4 times**. The 7 words measured outside the comfortable band were all measured mid-scroll.
+- ✅ Changing the font size mid-sentence keeps the highlight on the right word with no redraw call. Two steps up: the word grew from 16×21 to 21×27 px, still painted on `of`, and nothing in the font-size path touches the highlighter.
+- ✅ A word spanning an inline element highlights as one unit. `ALSO`, split across two text nodes, paints as one orange block from two client rects.
+- ✅ **Recorded in section 10, question 5**, and in 2.7: inside each shadow root, and only there.
+
+**How it was checked.** The same headless-Chrome-over-CDP harness as phases 4 and 5, driving the static server, plus screenshots of the painted word read back by eye — there is no API that reports whether a highlight painted, so the pixels are the measurement. Note that `Page.captureScreenshot`'s `clip` is in **document** coordinates, not viewport ones; a clip built from `getBoundingClientRect()` alone photographs empty background and looks exactly like a highlight that did not paint.
 
 ---
 

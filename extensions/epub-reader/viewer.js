@@ -5,6 +5,7 @@ import * as epubReaderCore from "./core/epub.js";
 import * as textWalk from "./core/text-walk.js";
 import * as modelFactory from "./core/document-model.js";
 import * as rendererFactory from "./view/renderer.js";
+import * as highlighterFactory from "./view/highlighter.js";
 import * as speechAdapter from "./speech/adapter.js";
 import * as playerFactory from "./player/controller.js";
 
@@ -12,6 +13,7 @@ const titleEl = document.getElementById("title");
 const noticeEl = document.getElementById("notice");
 const chaptersEl = document.getElementById("chapters");
 const renderer = rendererFactory.create(chaptersEl);
+const highlighter = highlighterFactory.create();
 
 // The static server in section 11's ground rules runs these same modules on a
 // plain page, where `chrome` does not exist at all — and the adapter's default
@@ -33,7 +35,11 @@ const speech = speechAdapter.create(globalThis.chrome?.tts ?? NO_TTS);
 // Neither module knows about the other: the renderer reports that a chapter was
 // filled, and the model is handed runs, exactly as on the first pass.
 renderer.onFill = (n, root) => {
-  if (model) model.rebindSection(n, textWalk.walk(root));
+  if (!model) return;
+  const rebound = model.rebindSection(n, textWalk.walk(root));
+  // The painted ranges pointed into the DOM that was just thrown away. Now the
+  // words hold live nodes again, the same position can be drawn.
+  if (rebound && highlighter.section === n) highlighter.refresh();
 };
 
 function notice(html, isError) {
@@ -94,8 +100,12 @@ function startPlayer(startAt) {
   player.onEnd(() => notice("Reached the end of the book."));
   player.onError((message) => notice(`Speech stopped: ${message}. Press play to resume.`, true));
 
+  // The Position seam (section 5.3): the controller reports where it is, the
+  // viewer looks the sentence up, and the highlighter draws it. Neither side
+  // knows the other.
   player.onPosition((position) => {
     if (window.epubReader.trace) console.log("[epub-reader] position", position);
+    highlighter.show(model.sentence(position.sentenceId), position.wordIndex);
   });
 }
 
@@ -123,6 +133,7 @@ async function show(loaded) {
   // before the model it was reading from is thrown away.
   if (player) player.pause();
   player = null;
+  highlighter.clear();
 
   book = await epubReaderCore.open(doc.bytes);
 
@@ -290,6 +301,18 @@ window.epubReader = {
 
   // epubReader.render(n) — force a chapter to render without scrolling to it.
   render: (n) => renderer.show(n),
+
+  // epubReader.highlight(id, word) — paint a sentence without playing it, to
+  // check phase 6's ranges against the page on their own.
+  async highlight(sentenceId, wordIndex = 0) {
+    if (!model) return console.warn("[epub-reader] no book loaded");
+    while (sentenceId >= model.sentences.length && model.parsedSections < model.sectionCount) {
+      await model.ensureSections(model.parsedSections + 1);
+    }
+    const sentence = model.sentence(sentenceId);
+    if (sentence) highlighter.show(sentence, wordIndex);
+    return sentence;
+  },
 
   // epubReader.spine() — the reading order, as phase 2's exit criteria ask for it.
   spine() {
