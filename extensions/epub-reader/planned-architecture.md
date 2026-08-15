@@ -1,12 +1,12 @@
 # EPUB Reader — Planned Architecture
 
-Status: **planned. Nothing is built.** This document is the design and the build order; no file in this directory exists yet apart from this one.
+Status: **phases 0-6 are built; phase 7 is not.** A book opens, renders, reads itself aloud and highlights each word as it goes. What is missing is the controls, the settings, resume and click-to-read. Sections 1-10 are now mostly measurement rather than intention; where a stance has not been checked yet it says so in place.
 
 It is the sibling of [`../pdf-reader/architecture.md`](../pdf-reader/architecture.md), and it is deliberately written in the same shape, because **this extension is mostly that extension with a different front half**. Where a section here says "unchanged from pdf-reader", it means literally that — the same file, copied.
 
 Like its sibling, this was written as a plan and is meant to be kept as a record: as each phase is built, fold what it found back into the design sections so they can later be read as fact rather than intention.
 
-**To pick up work:** read section 3 (module map), then section 11 (build phases), and start at phase 0.
+**To pick up work:** read section 0's table, then section 3 (module map), then phase 7 in section 11 — that is the only phase left. Two things from earlier phases are still owed an ear rather than a script, and are listed as unchecked in their own exit criteria: whether a chapter boundary is audible (phase 5, question 6) and whether the highlight tracks the voice in sync (phase 6). Both want a by-hand pass in Chrome, which phase 7's controls make easy.
 
 ## 0. Where things stand
 
@@ -406,7 +406,7 @@ Voices without word-boundary events are hidden from the picker. If step 3 is all
 
 **Shadow DOM per chapter, not a sandboxed iframe.** Both isolate the book's CSS. An iframe isolates too much: text selection would not cross chapters, `caretPositionFromPoint` would need per-frame coordinate translation, scroll-follow would have to measure through a frame boundary, and the highlight API would need registering per frame. Shadow roots let selection, ranges and hit-testing keep working on one document. The price is that the book's CSS is only *scoped*, not sandboxed, and `<script>` must be stripped explicitly rather than left to the frame's sandbox — cheap, and CSP is a second line of defence.
 
-**Highlight with the CSS Custom Highlight API.** `CSS.highlights` + `::highlight()` paints a `Range` without touching the DOM. Wrapping words in `<span>`s would mutate the book's markup, risk breaking its CSS selectors, and force a re-walk after every mutation. The Highlight API also survives reflow — which is exactly what changing the font size does — so pdf-reader's whole zoom-then-`refresh()` path disappears.
+**Highlight with the CSS Custom Highlight API. Confirmed in phase 6** — including across shadow boundaries, with the CSS inside each root (2.7). `CSS.highlights` + `::highlight()` paints a `Range` without touching the DOM. Wrapping words in `<span>`s would mutate the book's markup, risk breaking its CSS selectors, and force a re-walk after every mutation. The Highlight API also survives reflow — which is exactly what changing the font size does — so pdf-reader's whole zoom-then-`refresh()` path disappears.
 
 **Resume by `{spineIndex, charOffset}`.** See 4.3.
 
