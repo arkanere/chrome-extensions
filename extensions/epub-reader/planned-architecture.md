@@ -1,12 +1,14 @@
 # EPUB Reader — Planned Architecture
 
-Status: **phases 0-6 are built; phase 7 is not.** A book opens, renders, reads itself aloud and highlights each word as it goes. What is missing is the controls, the settings, resume and click-to-read. Sections 1-10 are now mostly measurement rather than intention; where a stance has not been checked yet it says so in place.
+Status: **every phase is built.** A book opens, renders, reads itself aloud with the header's controls, highlights each word as it goes, remembers the voice, the speed and where you stopped, and starts reading from any word you click. Sections 1-10 are now mostly measurement rather than intention; where a stance has not been checked yet it says so in place.
+
+**What is owed before this becomes `architecture.md`:** one by-hand pass in Chrome with the sound on, against the three things a script cannot judge — whether the highlight tracks a real voice in sync (phase 6), whether a chapter boundary is audible (phase 5, question 6), and whether a book opened from a `file://` path behaves like one from the picker (8's unresolved row). Everything else in phases 0-7 has been measured.
 
 It is the sibling of [`../pdf-reader/architecture.md`](../pdf-reader/architecture.md), and it is deliberately written in the same shape, because **this extension is mostly that extension with a different front half**. Where a section here says "unchanged from pdf-reader", it means literally that — the same file, copied.
 
 Like its sibling, this was written as a plan and is meant to be kept as a record: as each phase is built, fold what it found back into the design sections so they can later be read as fact rather than intention.
 
-**To pick up work:** read section 0's table, then section 3 (module map), then phase 7 in section 11 — that is the only phase left. Two things from earlier phases are still owed an ear rather than a script, and are listed as unchecked in their own exit criteria: whether a chapter boundary is audible (phase 5, question 6) and whether the highlight tracks the voice in sync (phase 6). Both want a by-hand pass in Chrome, which phase 7's controls make easy.
+**To pick up work:** read section 0's table, then section 3 (module map). No phase is left to build. What is left is the listening pass above — load the extension unpacked, open a book, press **Read aloud** and use it for a few minutes — and then the two closing chores in "Working this document": rename this file and write the `README.md`.
 
 ## 0. Where things stand
 
@@ -19,7 +21,7 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 | 4 — Text model | **done** | 69,313 sentences over all 113 books, no bad offsets. Found two renderer bugs phase 3 had left: `fill()` was not awaitable, so a chapter could be walked before it existed and silently lose its text (2.6). Words need an `endNode` (4.1), and the model needs `rebindSection` (2.6) |
 | 5 — Audio | **done** | Two files copied, then wiring, as planned — the smallest phase, as expected. `epubReader.play()` reads a book aloud in Chrome. Question 6 is not yet answered: a chapter boundary was not listened for specifically, so widen the prefetch if one is ever heard |
 | 6 — Highlight | **done** | Ranges paint inside shadow roots, but **only** from CSS inside that shadow root — question 5's stance was right, and the document copy of the rules is dead and was removed. Scroll-follow scrolls 4 times over 300 words. Sync with a real voice is still an ear check |
-| 7 — Controls, settings, resume, click-to-read | **not started** | |
+| 7 — Controls, settings, resume, click-to-read | **built, one by-hand pass owed** | Both files copied, the wiring is small. Click-to-read is the browser's hit test now, not ours — `caretPositionFromPoint` needs handing the shadow root explicitly (2.8). Resume needed one thing the plan missed: a seek paints the sentence but does not scroll, because scroll-follow tracks the *word* and no word has been spoken yet — `highlighter.reveal()` (2.8) |
 
 ### Working this document
 
@@ -34,7 +36,7 @@ It is written so a session that has never seen this project can open it cold, re
 
 **The test corpus.** Phase 0 gathers DRM-free books to probe against. Record where they live in 2.6 and reuse the same set in every later phase's exit criteria — "every test book" throughout means that set, so a cold session knows what to run against.
 
-**The debug object.** `window.epubReader` in `viewer.js` grows as the phases do, mirroring pdf-reader's `pdfReader`: phase 2 adds `spine()`, phase 4 adds `sentences()`, phase 5 adds `trace` — and, until phase 7's controls exist, `play()`, `pause()`, `toggle()` and `seek()`, which are the only way to start playback in between — phase 6 adds `highlight()`, phase 7 adds `voices()` and `forget()`. Several exit criteria below are written in terms of it, so add each entry in the phase that needs it rather than leaving them all to the end.
+**The debug object.** `window.epubReader` in `viewer.js` grows as the phases do, mirroring pdf-reader's `pdfReader`: phase 2 adds `spine()`, phase 4 adds `sentences()`, phase 5 adds `trace`, plus `play()`, `pause()`, `toggle()` and `seek()` — the only way to start playback until phase 7's controls existed, and kept afterwards because driving it from the console is how everything before phase 7 was checked — phase 6 adds `highlight()`, phase 7 adds `voices()` and `forget()`. Several exit criteria below are written in terms of it, so add each entry in the phase that needs it rather than leaving them all to the end.
 
 ## 1. What we are building
 
@@ -197,6 +199,16 @@ Everything else about the API behaved as section 9 hoped. Two `Highlight` object
 
 The one thing that does need a redraw is 2.5's teardown: a torn-down chapter's nodes are gone, so `rangeFor` refuses to build a range from a node whose `isConnected` is false. `viewer.js` calls `highlighter.refresh()` after `rebindSection` succeeds for the section on screen, and the paint comes back with the rebuilt nodes.
 
+### 2.8 The browser does the hit test, and a seek is not a scroll
+
+Found in phase 7, and both are consequences of 2.2's "the content is HTML" rather than anything new.
+
+**Click-to-read is a caret lookup, not a hit test.** pdf-reader had to search its own geometry — `wordAtPoint`, with a line's worth of slack on each side — because a PDF word is a box it invented. Here the words are real text nodes, so `caretPositionFromPoint(x, y)` answers the question exactly, and a `Word` already records the node and offset it needs comparing against. The whole feature is one caret call plus a walk of the chapter's words, and it lives in `viewer.js` — the model is never asked to compare DOM nodes, which would put the DOM inside the one file that must not know about it (4.2).
+
+The shadow roots do intrude once: from the document's point of view a click inside a chapter lands on the chapter `<div>`, and the caret call stops at the shadow boundary unless it is handed the roots to look inside — `caretPositionFromPoint(x, y, { shadowRoots: [root] })`. The renderer already exposes `root(n)`, and the click's `e.target` is retargeted to the chapter div, so the section number is on the element that was clicked.
+
+**A seek paints, but it does not scroll.** Scroll-follow tracks the *word*, and a seek emits a `Position` with `wordIndex: -1` — the sentence is lit, no word is yet (phase 6). That is right during playback, and wrong for the one case where nothing has been spoken at all: reopening a book at chapter 40 highlighted the remembered sentence somewhere far below the fold and left the page at the top. `view/highlighter.js` gained `reveal()` for it — scroll whatever is currently painted into view, instantly rather than smoothly, because this is a page landing on its position rather than keeping up with a voice. Only the resume calls it; playback never does.
+
 ## 3. Module map
 
 Identical in shape to pdf-reader's, with `core/parser` (pdf.js) replaced by `core/epub` (ZIP + OPF) and a small `core/text-walk` added. The three-way separation is the same: **what the book says** / **how it is spoken** / **how it is drawn**, and they never import each other.
@@ -316,6 +328,8 @@ Two runs carry no node, both added in phase 4 because a real book needs them:
 **Position:** `{ spineIndex, charOffset }`, **not** pdf-reader's bare `sentenceId`. A sentence id is an index into a list produced by the splitter, so any future change to the splitter silently moves every saved position to the wrong place. A character offset into a chapter does not. On open: parse up to `spineIndex`, then pick the sentence whose `[start, start+text.length)` contains `charOffset`, falling back to the first sentence starting after it.
 
 This is a deliberate divergence from the sibling extension. It is contained: `store/settings.js` and one lookup in `viewer.js`. If it proves out, pdf-reader could adopt the same idea later.
+
+**Phase 7 built it and it is exactly that small** — a four-argument `savePosition`, and four lines in `show()` that parse up to the chapter and call `sentenceAtOffset`. The one thing worth writing down: the offset is taken from `Sentence.start`, so what is stored is the start of the sentence being spoken, never a position inside it. A book reopened is therefore always at the beginning of a sentence, which is also the only place the player can start from (section 6).
 
 ## 5. Key interfaces
 
@@ -609,7 +623,7 @@ One thing the wiring had to absorb, in `viewer.js` rather than in the copied fil
 - ✅ A book reads aloud from the beginning. Confirmed by hand in Chrome via `epubReader.play()`.
 - ⬜ Playback crosses a chapter boundary **without an audible gap**. **Not listened for specifically**, so open question 6 stays open. Nothing suggests a gap; if one is ever heard, widen the prefetch and record it in section 6.
 - ⬜ `epubReader.trace = true` shows one position per word, not two. Confirmed in node against a fake engine emitting Natural's doubled events (below), but not separately against `chrome.tts`. Phase 6 makes this visible anyway — a doubled position would show as a highlight that stutters.
-- ⬜ Reaching the end of the book stops cleanly and clears the saved position. Stops cleanly; the saved position is phase 7's, and there is nothing to clear yet.
+- ✅ Reaching the end of the book stops cleanly and clears the saved position. Stopped cleanly here; the clearing was checked in phase 7, once there was a position to clear.
 
 **What was checked without a speaking engine.** `player/controller.js` imports nothing, so it was driven in plain node over a synthetic 4-section model with a fake engine firing two `word` events per word: sections parse in order, every sentence is spoken once, sentence 0 emits exactly one position per word plus the opening `-1`, and `end` fires at the last sentence. The viewer wiring was then loaded in headless Chrome over the static server: no page errors, the player is built, `seek(12)` lands on the right sentence, and `seek(999999)` walks the model to the end of a 12-section book — 13,923 sentences — and returns rather than hanging.
 
@@ -658,13 +672,20 @@ All of that held. The two `Highlight` objects are built once and their contents 
 - **Click-to-read**: `caretPositionFromPoint()` → text node and offset → binary search into the word list → `player.seek(sentenceId)`. Copy pdf-reader's `DRAG_SLOP` and collapsed-selection guard verbatim — it solves the same problem, that a click must not steal a text selection.
 - **Debug object**: add the last two entries, `voices()` and `forget()`. The rest arrived in the phases that needed them (section 0).
 
+Both files were copied as planned, `view/controls.js` byte for byte. `store/settings.js` changed only where 4.3 said it would: `savePosition(key, spineIndex, charOffset, label)` in place of a sentence id. The click-to-read lookup went into `viewer.js` rather than into the model, for the reason in 2.8, and `highlighter.reveal()` was the one thing the plan did not anticipate.
+
 **Exit criteria**
 
-- All of pdf-reader's phase 6 and 7 exit criteria, re-run against a book.
-- Voice and speed persist across a reload; position persists per book.
-- Reopening a book lands on the remembered sentence, highlighted and scrolled into view.
-- Clicking a word starts reading from its sentence; dragging still selects.
-- A book opened from a `file://` path behaves the same as one from the picker.
+- ✅ Voice and speed persist across a reload; position persists per book. The picker restores the saved voice, the slider its rate and its readout, and a position is written once per sentence as `{ spineIndex, charOffset }`.
+- ✅ Reopening a book lands on the remembered sentence, highlighted and scrolled into view. Stopped mid-chapter-2, reloaded: same sentence, sentence band painted, page scrolled 2,353 px to it. Scrolling needed `reveal()` — see 2.8.
+- ✅ Reaching the end of the book clears the saved position — phase 5's last unchecked criterion, which had nothing to clear at the time.
+- ✅ Clicking a word starts reading from its sentence; dragging still selects. A click on the fourth word of sentence 61 seeks to 61; a 60 px drag from the same point selects `ent day, ` and leaves the player where it was.
+- ✅ The restart link in the resume notice drops the position and goes back to the first sentence.
+- ✅ Changing the font size mid-sentence still needs no redraw: two steps up, the readout reads 126 %, the chapter computes to 24 px, and the painted sentence is still painted.
+- ⬜ A book opened from a `file://` path behaves the same as one from the picker. Still section 8's unresolved row, not a phase 7 regression — the picker and drag-and-drop are unaffected.
+- ⬜ The listening pass: sync against a real voice, and a chapter boundary. See section 0.
+
+**How it was checked.** The same headless-Chrome-over-CDP harness as phases 4-6, driving the static server. Two things had to be faked to get there, both injected before `viewer.js` loads and neither touching the extension's own code: a `chrome.storage.local` over `localStorage`, and a `chrome.tts` that emits Natural's two `word` events per word. That second fake is what makes the whole phase 7 loop drivable — play, save, reload, resume — without a speaking engine.
 
 ## 12. What could come next
 

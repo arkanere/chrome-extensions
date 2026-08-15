@@ -8,6 +8,8 @@ import * as rendererFactory from "./view/renderer.js";
 import * as highlighterFactory from "./view/highlighter.js";
 import * as speechAdapter from "./speech/adapter.js";
 import * as playerFactory from "./player/controller.js";
+import * as controlsFactory from "./view/controls.js";
+import * as settings from "./store/settings.js";
 
 const titleEl = document.getElementById("title");
 const noticeEl = document.getElementById("notice");
@@ -66,11 +68,15 @@ let book = null;
 let model = null;
 let player = null;
 
-// Phase 7 replaces both of these with store/settings.js and the voice picker.
-// Until then section 7's chain picks, once, at load.
+const prefs = await settings.loadPrefs();
 const voices = await speech.listVoices();
-const voice = speechAdapter.chooseVoice(voices);
-const rate = 1;
+
+// A saved voice wins if it is still installed. If it is not, section 7's chain
+// picks instead — and section 8's row for that says to tell the user which voice
+// ended up speaking, which voiceNotes() does.
+const savedVoice = prefs.voice ? voices.find((v) => v.id === prefs.voice) : null;
+let voice = savedVoice || speechAdapter.chooseVoice(voices);
+let rate = prefs.rate ?? 1;
 
 console.log(
   `[epub-reader] voice: ${voice ? voice.label : "platform default"}` +
@@ -80,16 +86,50 @@ console.log(
 // Section 8's "voice missing at load" row, and section 7's note that audio
 // without highlighting beats no audio.
 function voiceNotes() {
-  if (!voice) return ["No voice reporting word timing was found, so nothing will be highlighted."];
-  if (!voice.supportsWordEvents) {
-    return [`<b>${voice.label}</b> reports no word timing, so nothing will be highlighted.`];
+  const notes = [];
+  if (prefs.voice && !savedVoice) {
+    notes.push(
+      `Your saved voice <b>${prefs.voice}</b> is not installed on this machine, ` +
+      `so <b>${voice ? voice.label : "the platform default"}</b> is being used.`,
+    );
   }
-  return [];
+  if (!voice) {
+    notes.push("No voice reporting word timing was found, so nothing will be highlighted.");
+  } else if (!voice.supportsWordEvents) {
+    notes.push(`<b>${voice.label}</b> reports no word timing, so nothing will be highlighted.`);
+  }
+  return notes;
 }
 
+const controls = controlsFactory.create(
+  document.getElementById("controls"),
+  { voices, voice: voice && voice.id, rate, rateRange: speechAdapter.rateRange },
+  {
+    toggle() {
+      if (!player) return;
+      clearNotice();
+      player.toggle();
+    },
+    next: () => player && player.next(),
+    previous: () => player && player.previous(),
+
+    voice(id) {
+      voice = voices.find((v) => v.id === id) || null;
+      if (player) player.setVoice(id);
+      settings.savePrefs({ voice: id });
+    },
+    rate(value) {
+      rate = value;
+      if (player) player.setRate(value);
+      settings.savePrefs({ rate: value });
+    },
+  },
+);
+controls.setEnabled(false);
+
 // Follows pdf-reader's startPlayer almost line for line — the payoff for the
-// pipeline having been one-directional. The highlighter subscribes to the same
-// Position events in phase 6, and store/settings to them in phase 7.
+// pipeline having been one-directional. The highlighter and store/settings both
+// hang off the same Position events, and neither knows about the other.
 function startPlayer(startAt) {
   player = playerFactory.create(model, speech, {
     voice: voice && voice.id,
@@ -97,16 +137,35 @@ function startPlayer(startAt) {
     sentenceId: startAt,
   });
 
-  player.onEnd(() => notice("Reached the end of the book."));
+  player.onState(({ playing }) => controls.setPlaying(playing));
+  player.onEnd(() => {
+    // The book is finished, so there is nothing left to resume to. Leaving the
+    // position behind would reopen it on its last sentence forever.
+    notice("Reached the end of the book.");
+    settings.clearPosition(doc.key);
+  });
   player.onError((message) => notice(`Speech stopped: ${message}. Press play to resume.`, true));
 
   // The Position seam (section 5.3): the controller reports where it is, the
   // viewer looks the sentence up, and the highlighter draws it. Neither side
   // knows the other.
+  let lastSaved = -1;
   player.onPosition((position) => {
     if (window.epubReader.trace) console.log("[epub-reader] position", position);
-    highlighter.show(model.sentence(position.sentenceId), position.wordIndex);
+    const sentence = model.sentence(position.sentenceId);
+    highlighter.show(sentence, position.wordIndex);
+
+    // One write per sentence — a few seconds apart at any speed — rather than one
+    // per word. What is written is the chapter and the character offset into it
+    // (4.3), never the sentence id.
+    if (sentence && position.sentenceId !== lastSaved) {
+      lastSaved = position.sentenceId;
+      settings.savePosition(doc.key, sentence.section, sentence.start, doc.label);
+    }
   });
+
+  controls.setEnabled(true);
+  controls.setPlaying(player.playing);
 }
 
 // The model's text source (section 3's one new arrow): the renderer puts a
@@ -134,6 +193,7 @@ async function show(loaded) {
   if (player) player.pause();
   player = null;
   highlighter.clear();
+  controls.setEnabled(false);
 
   book = await epubReaderCore.open(doc.bytes);
 
@@ -170,7 +230,35 @@ async function show(loaded) {
   // Section 8's "book with no readable text" row. The probe renders the first few
   // chapters, which is work the reader would do a moment later anyway.
   if (await model.hasText()) {
-    startPlayer(0);
+    // 4.3's resume: a saved { spineIndex, charOffset } is turned back into a
+    // sentence by walking the model up to that chapter and looking the offset up
+    // inside it. A chapter that is no longer there — a book replaced by a
+    // different edition under the same name would do it — simply starts at the
+    // beginning rather than failing to open.
+    const remembered = await settings.loadPosition(doc.key);
+    let startAt = 0;
+
+    if (remembered && remembered.spineIndex < book.sectionCount) {
+      await model.ensureSections(remembered.spineIndex + 1);
+      const sentence = model.sentenceAtOffset(remembered.spineIndex, remembered.charOffset);
+      if (sentence) startAt = sentence.id;
+    }
+
+    startPlayer(startAt);
+
+    // Seeking rather than only starting there: it emits a Position, which paints
+    // the highlight and scrolls the chapter into view, so the resume is visible
+    // before anything is spoken.
+    if (startAt > 0) {
+      await player.seek(startAt);
+      // The seek paints the sentence but does not move the page: no word has been
+      // spoken yet, and scroll-follow tracks the word. Ask for it explicitly.
+      highlighter.reveal();
+      notes.push(
+        `Picked up where you stopped, in chapter ${remembered.spineIndex + 1} of ${book.sectionCount}. ` +
+        `<a href="#" data-action="restart">Start from the beginning</a>`,
+      );
+    }
     notes.push(...voiceNotes());
   } else {
     notice("This book contains no readable text, so it cannot be read aloud.", true);
@@ -243,6 +331,106 @@ window.addEventListener("drop", async (e) => {
   if (file) await loadFile(file);
 });
 
+// The only interactive thing a notice ever offers: throw the remembered position
+// away and go back to the first sentence.
+noticeEl.addEventListener("click", (e) => {
+  const link = e.target.closest('[data-action="restart"]');
+  if (!link) return;
+  e.preventDefault();
+  clearNotice();
+  if (doc) settings.clearPosition(doc.key);
+  if (player) player.seek(0);
+});
+
+// Click a word to read from there. In pdf-reader this was a hit test over the
+// boxes every Word carried; here the browser does the hit test for us, because
+// the words are real text nodes. caretPositionFromPoint gives a node and an
+// offset, and a Word already records exactly that pair.
+//
+// The one EPUB-specific part is the shadow root: from the document's point of
+// view a click inside a chapter lands on the chapter div, and the caret APIs stop
+// at the shadow boundary unless they are handed the roots to look inside.
+function caretAt(x, y, root) {
+  const pos = document.caretPositionFromPoint?.(x, y, { shadowRoots: root ? [root] : [] });
+  if (pos && pos.offsetNode?.nodeType === Node.TEXT_NODE) {
+    return { node: pos.offsetNode, offset: pos.offset };
+  }
+  // Older Chrome, and the static server's engine: the non-standard call, which
+  // does pierce shadow roots but reports a Range rather than a position.
+  const range = document.caretRangeFromPoint?.(x, y);
+  if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
+    return { node: range.startContainer, offset: range.startOffset };
+  }
+  return null;
+}
+
+// The last word in this text node that starts at or before the caret, which is
+// the word the click is inside. Words are in reading order, so the scan can stop
+// as soon as it is past the offset. The model is not asked to do this: it would
+// mean comparing DOM nodes inside a file that must not know what a DOM is (4.2),
+// and a chapter's word list is short enough to walk.
+function wordAt(section, node, offset) {
+  let hit = null;
+  let firstInNode = null;
+
+  for (const sentence of model.sentencesInSection(section)) {
+    for (let i = 0; i < sentence.words.length; i++) {
+      const word = sentence.words[i];
+      if (word.node !== node) continue;
+      if (!firstInNode) firstInNode = { sentenceId: sentence.id, wordIndex: i };
+      if (word.nodeStart <= offset) hit = { sentenceId: sentence.id, wordIndex: i };
+      else return hit ?? firstInNode;
+    }
+  }
+  // Clicking past the last word of a node lands on that word; clicking before the
+  // first one lands on it. Both read as "start here".
+  return hit ?? firstInNode;
+}
+
+// A click has to share the page with text selection. A click that moved between
+// press and release, or that ends with text selected, is the user selecting — not
+// asking to be read to. Copied from pdf-reader, slop and all.
+const DRAG_SLOP = 4;
+let pressedAt = null;
+
+chaptersEl.addEventListener("pointerdown", (e) => {
+  pressedAt = { x: e.clientX, y: e.clientY };
+});
+
+chaptersEl.addEventListener("click", async (e) => {
+  const down = pressedAt;
+  pressedAt = null;
+
+  if (!player || !model || !down) return;
+  if (Math.abs(e.clientX - down.x) > DRAG_SLOP || Math.abs(e.clientY - down.y) > DRAG_SLOP) return;
+  if (!(window.getSelection()?.isCollapsed ?? true)) return;
+  // A link inside the book is the renderer's business, not ours.
+  if (e.composedPath().some((n) => n.tagName === "A")) return;
+
+  // Retargeted at the shadow boundary, so this is the chapter div however deep
+  // inside the book's markup the click landed.
+  const chapterEl = e.target.closest?.(".chapter");
+  if (!chapterEl) return;
+  const section = Number(chapterEl.dataset.section);
+
+  const caret = caretAt(e.clientX, e.clientY, renderer.root(section));
+  if (!caret) return;
+
+  // A chapter is drawn as it is scrolled to and walked as playback reaches it, so
+  // a click can easily be the first thing that needs this chapter's sentences.
+  await model.ensureSections(section + 1);
+  const hit = wordAt(section, caret.node, caret.offset);
+  if (!hit) return;
+
+  // Seeking is by sentence, not by word: the adapter speaks a whole Sentence.text
+  // and starting mid-string would break the controller's charIndex mapping.
+  // Sentences are short (phase 4: a 15-word median), so the clicked word is only
+  // ever a moment away.
+  clearNotice();
+  await player.seek(hit.sentenceId);
+  if (!player.playing) await player.play();
+});
+
 // chrome.tts speaks at the extension level, not the page's, so closing the tab
 // mid-sentence would leave the voice talking to an empty room.
 window.addEventListener("pagehide", () => speech.stop());
@@ -293,11 +481,19 @@ window.epubReader = {
   // check that Natural's two boundary events per word collapse into one.
   trace: false,
 
-  // Until phase 7's controls exist, playback is driven from here.
+  // Playback is the header's controls now; these stay because driving it from the
+  // console is how everything before phase 7 was checked, and epubReader.player
+  // exposes the rest.
   play: () => player && player.play(),
   pause: () => player && player.pause(),
   toggle: () => player && player.toggle(),
   seek: (id) => player && player.seek(id),
+
+  voices: () => speech.listVoices(),
+
+  // epubReader.forget() — drop this book's remembered position, so the next open
+  // starts at the beginning. Used to re-test the resume by hand.
+  forget: () => doc && settings.clearPosition(doc.key),
 
   // epubReader.render(n) — force a chapter to render without scrolling to it.
   render: (n) => renderer.show(n),

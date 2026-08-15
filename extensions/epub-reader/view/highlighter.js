@@ -62,17 +62,18 @@ export function create() {
 
   // Scroll only when the word has actually left the comfortable band. Following
   // it every word would scroll on every single event.
-  function follow(range) {
-    if (performance.now() < settleUntil) return;
+  function follow(range, behavior = "smooth") {
+    if (performance.now() < settleUntil) return false;
 
     const rect = range.getBoundingClientRect();
-    if (!rect.height && !rect.width) return; // not laid out, or a collapsed range
+    if (!rect.height && !rect.width) return false; // not laid out, or a collapsed range
 
-    if (rect.top >= HEADER && rect.bottom <= window.innerHeight - BOTTOM_MARGIN) return;
+    if (rect.top >= HEADER && rect.bottom <= window.innerHeight - BOTTOM_MARGIN) return true;
 
     const target = HEADER + (window.innerHeight - HEADER) * SCROLL_TARGET;
-    window.scrollBy({ top: rect.top - target, behavior: "smooth" });
+    window.scrollBy({ top: rect.top - target, behavior });
     settleUntil = performance.now() + SCROLL_SETTLE_MS;
+    return true;
   }
 
   function draw() {
@@ -108,6 +109,24 @@ export function create() {
     clear() {
       shown = null;
       draw();
+    },
+
+    // Scroll the painted sentence into view on demand. Phase 7's resume needs it:
+    // nothing has been spoken yet, so the position carries no word, and draw()'s
+    // follow() tracks the word rather than the sentence — a book reopened in
+    // chapter 40 would otherwise be highlighted somewhere far below the top of
+    // the page. Playback never calls this; following the voice is draw()'s job,
+    // one word at a time. The jump is instant rather than smooth, because it is a
+    // page landing on its position, not the page keeping up with a voice.
+    reveal() {
+      if (!shown) return false;
+      const words = shown.sentence.words;
+      if (!words.length) return false;
+
+      const band = rangeFor(words[0], words[words.length - 1]);
+      if (!band) return false;
+      settleUntil = 0;
+      return follow(band, "auto");
     },
 
     // A chapter torn down and rebuilt gives the model new nodes (2.5). The
