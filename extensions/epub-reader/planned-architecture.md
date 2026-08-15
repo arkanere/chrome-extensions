@@ -21,6 +21,21 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 | 6 — Highlight | **not started** | CSS Custom Highlight API. Answers open question 5 |
 | 7 — Controls, settings, resume, click-to-read | **not started** | |
 
+### Working this document
+
+It is written so a session that has never seen this project can open it cold, read sections 3 and 11, and start. Keeping that true costs a few minutes at the end of every phase:
+
+- **Mark the phase done in the table above**, and say in one line what it actually found — especially where reality differed from the stance written here.
+- **Fold the findings back into the design sections**, so sections 1-10 can later be read as fact rather than intention. Every open question in section 10 names the phase that answers it; answer it there, in place, and strike the question.
+- **Commit at the end of each phase**, with the phase named in the message. `git log` in this repo is then the second copy of the table above.
+- **Rename this file to `architecture.md`** once phase 7 is confirmed in Chrome, and write the user-facing `README.md` then — the sibling extension's split between the two is the model.
+
+**Where things are copied from.** Every "copy from pdf-reader" below means the file at the same path under `../pdf-reader/`. Read [`../pdf-reader/architecture.md`](../pdf-reader/architecture.md) alongside this document — its sections 2.2-2.7 are measurements this design rests on and does not repeat.
+
+**The test corpus.** Phase 0 gathers DRM-free books to probe against. Record where they live in 2.5 and reuse the same set in every later phase's exit criteria — "every test book" throughout means that set, so a cold session knows what to run against.
+
+**The debug object.** `window.epubReader` in `viewer.js` grows as the phases do, mirroring pdf-reader's `pdfReader`: phase 2 adds `spine()`, phase 4 adds `sentences()`, phase 5 adds `trace`, phase 6 adds `highlight()`, phase 7 adds `voices()` and `forget()`. Several exit criteria below are written in terms of it, so add each entry in the phase that needs it rather than leaving them all to the end.
+
 ## 1. What we are building
 
 A Chrome extension that opens an EPUB in its own viewer and reads it aloud using the text-to-speech voices Chrome already has on the machine, highlighting each word as it is spoken.
@@ -353,7 +368,7 @@ For each book record: producer (from the OPF), compression methods seen, zip64 p
 **Exit criteria**
 
 - Every test book opens, or the failures are understood well enough to decide.
-- **Record the table in section 2.5**, and record the vendor-or-not decision in section 9.
+- **Record the table in section 2.5**, along with where the test books live, and record the vendor-or-not decision in section 9. Every later phase's "every test book" means this set.
 - If a DRM'd book is available, confirm it is detected rather than half-opened.
 
 ---
@@ -512,7 +527,7 @@ CSS.highlights.set("epub-sentence", new Highlight(sentenceRange));
 - **Font size** replaces zoom: same two buttons, same readout position, stepping `--reading-font-size` on the host. No re-render, no highlight refresh.
 - **Resume** stores `{ spineIndex, charOffset }` (4.3). On open, `seek` to the recovered sentence so the highlight paints and the page scrolls before anything is spoken, and show the same "Picked up where you stopped… Start from the beginning" notice.
 - **Click-to-read**: `caretPositionFromPoint()` → text node and offset → binary search into the word list → `player.seek(sentenceId)`. Copy pdf-reader's `DRAG_SLOP` and collapsed-selection guard verbatim — it solves the same problem, that a click must not steal a text selection.
-- **Debug object** `window.epubReader`, mirroring `pdfReader`: `spine()`, `sentences()`, `trace`, `highlight()`, `voices()`, `forget()`.
+- **Debug object**: add the last two entries, `voices()` and `forget()`. The rest arrived in the phases that needed them (section 0).
 
 **Exit criteria**
 
