@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EPUB Reader</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <header>
+    <h1 id="title">EPUB Reader</h1>
+    <div class="tools">
+      <!-- view/controls.js fills this: play/pause, skip sentence, speed, voice. -->
+      <div class="controls" id="controls"></div>
+      <!-- Same two buttons and readout as pdf-reader's zoom, driving font size
+           instead (phase 7). -->
+      <button id="font-smaller" title="Smaller text">−</button>
+      <span id="font-size">100%</span>
+      <button id="font-larger" title="Larger text">+</button>
+      <label class="picker">
+        Open a book
+        <input type="file" id="file" accept="application/epub+zip,.epub">
+      </label>
+    </div>
+  </header>
+
+  <div id="notice" hidden></div>
+
+  <main id="chapters"></main>
+
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>

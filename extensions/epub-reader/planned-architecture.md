@@ -13,8 +13,8 @@ Like its sibling, this was written as a plan and is meant to be kept as a record
 | Phase | State | Notes |
 |---|---|---|
 | 0 — ZIP and DRM probe | **done** | All 113 test books open by hand-rolled ZIP; nothing vendored. Two surprises: OPF elements can be namespace-prefixed, and `encryption.xml` usually means font obfuscation, not DRM. See 2.5 |
-| 1 — Shell, entry points, viewer page | **not started** | Answers open question 3 |
-| 2 — `core/epub.js`: ZIP, OPF, spine | **not started** | |
+| 1 — Shell, entry points, viewer page | **built, not yet confirmed in Chrome** | Loading an unpacked extension cannot be automated, so the exit criteria and open question 3 are still open |
+| 2 — `core/epub.js`: ZIP, OPF, spine | **built, not yet confirmed in Chrome** | Carries phase 0's four findings. The ZIP half is the probe's, already exercised on 113 books; the `DOMParser` half has only ever run in Chrome's absence |
 | 3 — Render chapters | **not started** | The one genuinely new piece of engineering. Answers open question 4 |
 | 4 — Text model | **not started** | Half of it is copied from pdf-reader |
 | 5 — Audio | **not started** | Two files copied verbatim, then wiring |

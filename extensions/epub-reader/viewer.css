@@ -1,0 +1,150 @@
+:root {
+  --bg: #edecea;
+  --panel: #fff;
+  --ink: #1c1c1a;
+  --muted: #6b6b66;
+  --line: #dcdbd6;
+
+  /* Stepped by the header's two buttons (phase 7). Each chapter's shadow root
+     inherits this, which is why changing it reflows the text instead of
+     re-rendering it the way pdf-reader's zoom had to. */
+  --reading-font-size: 19px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tools { display: flex; align-items: center; gap: 10px; flex: none; }
+
+.tools button {
+  font: inherit;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+.tools button:hover { background: var(--bg); }
+.tools button.wide { width: auto; padding: 0 12px; font-size: 13px; }
+.tools button:disabled { color: var(--muted); cursor: default; background: var(--panel); }
+
+#font-size { font-size: 12px; color: var(--muted); min-width: 40px; text-align: center; }
+
+/* Phase 7's controls. Built by view/controls.js into #controls, so the header
+   markup only reserves the space. */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 10px;
+  border-right: 1px solid var(--line);
+}
+
+.controls button {
+  font: inherit;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+.controls button:hover:not(:disabled) { background: var(--bg); }
+.controls button.wide { width: auto; padding: 0 12px; font-size: 13px; }
+.controls button:disabled { color: var(--muted); cursor: default; }
+
+.speed { display: flex; align-items: center; gap: 6px; }
+.speed input { width: 76px; accent-color: #d98600; }
+.speed-value { font-size: 12px; color: var(--muted); min-width: 34px; }
+
+#voice {
+  font: inherit;
+  font-size: 12px;
+  max-width: 190px;
+  height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.picker { font-size: 13px; color: var(--muted); }
+.picker input { display: none; }
+.picker:hover { color: var(--ink); cursor: pointer; }
+
+#notice {
+  max-width: 720px;
+  margin: 24px auto 0;
+  padding: 14px 16px;
+  background: #fff8e1;
+  border: 1px solid #f0e0a8;
+  border-radius: 8px;
+  font-size: 14px;
+}
+#notice.error { background: #ffebee; border-color: #f3c2c2; }
+#notice code { background: rgba(0, 0, 0, 0.06); padding: 1px 5px; border-radius: 4px; }
+
+/* One scrolling column, not a stack of fixed-size pages (section 9). */
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0 60px;
+}
+
+/* One per spine item, created up front so the scrollbar is honest, filled as it
+   nears the viewport (phase 3). The book's own markup goes in a shadow root
+   attached here, so nothing below this element is styled from this file. */
+.chapter {
+  width: min(100% - 40px, 46rem);
+  background: var(--panel);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+}
+.chapter.loading { min-height: 60vh; }
+.chapter.failed { outline: 2px solid #c62828; }
+
+/* Drag-and-drop onto the viewer. The picker is the primary way in here, so
+   dropping a file on the page is a first-class entry point rather than a nicety. */
+body.dropping::after {
+  content: "Drop the book to open it";
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--ink);
+  background: rgba(237, 236, 234, 0.92);
+  border: 3px dashed var(--line);
+}
