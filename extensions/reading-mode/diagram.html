@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Visual diagram</title>
+  <link rel="stylesheet" href="diagram.css">
+</head>
+<body>
+  <header>
+    <h1 id="title">Visual diagram</h1>
+    <span class="hint">Drag to pan · scroll to zoom</span>
+  </header>
+
+  <!-- diagram.js renders into #stage and transforms it for pan/zoom. -->
+  <main id="canvas"><div id="stage"></div></main>
+
+  <div id="notice" hidden></div>
+
+  <script src="lib/mermaid.min.js"></script>
+  <script src="diagram.js"></script>
+</body>
+</html>

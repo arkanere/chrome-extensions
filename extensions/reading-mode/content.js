@@ -47,6 +47,51 @@
     }, 2500);
   }
 
+  // Sticky bar across the top of the reader: article title on the left, tools
+  // on the right — the same arrangement pdf-reader and epub-reader use. The
+  // diagram button is only added when a Gemini key is configured; unlike
+  // Define there is no free fallback, and a dead button is worse than none.
+  function setupTopBar(scrollEl, article) {
+    const bar = document.createElement("div");
+    bar.className = "rm-bar";
+
+    const name = document.createElement("div");
+    name.className = "rm-bar-title";
+    name.textContent = article.title || document.title;
+
+    const tools = document.createElement("div");
+    tools.className = "rm-bar-tools";
+    bar.append(name, tools);
+    scrollEl.insertBefore(bar, scrollEl.firstChild);
+
+    chrome.runtime.sendMessage({ type: "rm-diagram-available" }, (res) => {
+      if (!res || !res.ok) return;
+      const btn = document.createElement("button");
+      btn.className = "rm-bar-btn";
+      btn.textContent = "Create visual diagram";
+      tools.appendChild(btn);
+
+      btn.addEventListener("click", () => {
+        btn.disabled = true;
+        btn.textContent = "Generating…";
+        chrome.runtime.sendMessage(
+          {
+            type: "rm-diagram",
+            title: article.title || document.title,
+            text: article.textContent,
+          },
+          (res) => {
+            btn.disabled = false;
+            btn.textContent = "Create visual diagram";
+            if (!res || !res.ok) {
+              toast((res && res.error) || "Couldn't build a diagram.");
+            }
+          }
+        );
+      });
+    });
+  }
+
   // Select text → "Highlight" pill appears → click to mark it. A corner chip
   // counts highlights and copies them all (plain text, blank-line separated)
   // on click. Clicking a highlight removes it. Session-only: everything lives
@@ -373,6 +418,7 @@
 
     page.appendChild(articleEl);
     shadow.appendChild(page);
+    setupTopBar(page, article);
     setupHighlights(shadow, page, body);
     document.documentElement.appendChild(host);
 

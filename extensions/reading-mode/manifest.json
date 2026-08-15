@@ -3,7 +3,7 @@
   "name": "Reading Mode",
   "version": "1.0.0",
   "description": "Turn any article into a clean, distraction-free reading view. Click the icon to toggle, Esc to close.",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "https://api.dictionaryapi.dev/*",
     "https://en.wikipedia.org/*",

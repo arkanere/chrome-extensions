@@ -1,8 +1,8 @@
 # Reading Mode
 
 Turn any article into a clean, distraction-free reading view. Click the toolbar
-icon to open it; click again or press **Esc** to close. Zero on-screen UI — the
-overlay is the article and nothing else.
+icon to open it; click again or press **Esc** to close. The only chrome is a
+thin bar across the top — the article's name on the left, tools on the right.
 
 ## What it does
 
@@ -47,11 +47,34 @@ and jargon than a dictionary. `config.js` is gitignored; never commit a key.
 If the key is missing or the request fails, it falls back to the free lookups
 above automatically.
 
-Network use: the selected term goes to `api.dictionaryapi.dev` and/or
+## Create visual diagram
+
+The top bar's **Create visual diagram** button turns the whole article into a
+mind map or flow diagram. It sends the article text to Gemini, which returns
+its structure as a graph; the graph is drawn with
+[Mermaid](https://mermaid.js.org) in a new tab, where you can drag to pan and
+scroll to zoom. The model picks the shape: a mind map for articles that explain
+a topic, a flow diagram for ones that describe a process, a sequence, or an
+argument.
+
+Generating takes a few seconds and the button says "Generating…" while it
+works — the tab opens only once the diagram is ready, so a failure shows up as
+a notice in the reader rather than an empty tab. The button only appears when a
+Gemini key is configured (see Define above); unlike Define there is no free
+fallback.
+Long articles are truncated to the first ~40,000 characters.
+
+Diagrams are session-only, like highlights: they live in
+`chrome.storage.session` and are gone when you quit the browser.
+
+## What leaves the browser
+
+Define sends the selected term to `api.dictionaryapi.dev` and/or
 `en.wikipedia.org`, or (with a key configured) the term and its surrounding
-paragraph go to `generativelanguage.googleapis.com` — the hosts listed under
-`host_permissions`. Lookups run in the service worker so page CSP can't block
-them. Nothing else leaves the browser.
+paragraph to `generativelanguage.googleapis.com`. Create visual diagram sends
+the article's text to the same Gemini host. Those are the hosts listed under
+`host_permissions`; nothing else leaves the browser. Both run in the service
+worker so page CSP can't block them.
 
 ## How it works
 
@@ -67,3 +90,9 @@ overlay and every later one toggles it. Permissions are just `activeTab` +
   listed under `web_accessible_resources` in the manifest
 - `lib/Readability.js` is vendored verbatim from mozilla/readability (Apache
   2.0). To update it, replace the file with the latest from their repo
+- `lib/mermaid.min.js` is vendored the same way (MIT, v11.16.1, 3.6 MB —
+  `dist/mermaid.min.js` from the `mermaid` npm package). It only loads in the
+  diagram tab, never in a page
+- Gemini returns the diagram as JSON, not as Mermaid source: model-written
+  Mermaid breaks on quotes and brackets in labels, so `diagram.js` generates
+  the source itself. `visual-diagram-feature-plan.md` has the reasoning

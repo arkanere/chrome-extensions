@@ -1,6 +1,6 @@
 /* Reading Mode overlay. Lives inside a shadow root, so nothing here can leak
-   into the page and page styles can't reach in. Zero UI: the overlay is the
-   article and nothing else. */
+   into the page and page styles can't reach in. The article is the page; the
+   only chrome is a thin top bar for tools that need somewhere to live. */
 
 :host {
   all: initial;
@@ -36,10 +36,64 @@
   }
 }
 
+/* --- Top bar ------------------------------------------------------------ */
+
+.rm-bar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 20px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--rule);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.rm-bar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rm-bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.rm-bar-btn {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  padding: 5px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.rm-bar-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.rm-bar-btn:disabled {
+  color: var(--ink-soft);
+  cursor: default;
+}
+
 article {
   max-width: 66ch;
   margin: 0 auto;
-  padding: 9vh 24px 20vh;
+  padding: 7vh 24px 20vh;
 }
 
 .title {
