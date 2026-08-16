@@ -220,6 +220,68 @@ remembered sentence with the page scrolled to it, clicking a word reads from
 there while dragging still selects — and, specifically, adding a highlight and
 then removing it mid-playback leaves the spoken word still painting.
 
+## What was built
+
+All five phases landed together, in one commit, rather than one commit each.
+Phase 1's throwaway console harness was therefore never written: its two risks
+were answered by the real code instead, which means the first load of the
+finished feature is what proves them. If the dynamic `import()` fails, the
+console says `[reading-mode] read aloud unavailable:` and the reader still
+opens, reads, highlights and defines exactly as before — speech is the only
+thing lost, and the fallback above is what to reach for.
+
+The plan survived contact almost intact. Seven files were copied, five of them
+byte-identical to `epub-reader`'s (`cmp` says so); the port carried the
+adapter untouched. What follows is where the built thing differs from the page
+above, and why.
+
+**The highlights are named `rm-word` and `rm-sentence`.** `CSS.highlights` is a
+global registry shared with the page and with any other extension on it, so the
+names are prefixed like everything else here.
+
+**The highlighter gained `dispose()`.** `epub-reader`'s viewer is a tab that
+lives once; this overlay is built and destroyed on every toggle. Without taking
+the two entries back out of `CSS.highlights`, a reopened reader registers over
+ranges pointing into a document that no longer exists.
+
+**The keepalive lives in the content script, not the worker,** and pings only
+while an utterance is actually live rather than on a permanent timer. A port
+that pings forever would keep the worker awake forever.
+
+**A dropped port is reported as an error, not a silence.** If the port goes away
+mid-sentence the utterance can never report `end`, and the controller would wait
+for it for the rest of the session. The shim synthesises an `error` event for
+every live utterance instead, which is a shape the adapter already handles.
+
+**A rejected utterance comes back the same way.** The shim's `speak` callback
+cannot reproduce `chrome.runtime.lastError` — it is not running inside a Chrome
+API callback — so the worker turns a rejection into an `error` event. The
+adapter's `lastError` branch is therefore dead code in this copy, and stays only
+because the file is byte-identical to its siblings by design.
+
+**`setupSpeech` is async, so it checks the reader is still open.** Loading seven
+modules and listing ~190 voices takes long enough to close the reader inside it.
+Every await is followed by a `stillOpen()` test, or a second overlay would find
+half of the first one wired into it.
+
+**No controls at all when there is nothing to read,** rather than
+`epub-reader`'s disabled ones. There is no second document coming — an article
+with no words never gains any — so a permanently dead cluster is worse than an
+absent one.
+
+**The position key drops the URL's hash.** Two links into the same article are
+one read.
+
+**The resume announces itself.** `epub-reader` puts it in the notice bar, which
+this reader does not have; a toast says *Picked up where you stopped reading*.
+Without it, an article that opens scrolled halfway down reads as a bug.
+
+**The cluster sits ahead of Create visual diagram** in `.rm-bar-tools`, so its
+place in the bar matches the siblings' headers.
+
+The README's promise was amended as section *Amended promise* asked: highlights
+are still session-only, and a new *What is stored* section says what is not.
+
 ## Not in v1
 
 **Keyboard shortcuts.** Space for play/pause, arrows to skip. Space also

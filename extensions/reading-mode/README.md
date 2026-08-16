@@ -1,8 +1,11 @@
 # Reading Mode
 
 Turn any article into a clean, distraction-free reading view. Click the toolbar
-icon to open it; click again or press **Esc** to close. The only chrome is a
-thin bar across the top — the article's name on the left, tools on the right.
+icon to open it; click again to close. The only chrome is a thin bar across the
+top — the article's name on the left, tools on the right.
+
+**Esc** unwinds one layer at a time: an open dictionary card first, then the
+voice if it is reading aloud, then the reader itself.
 
 ## What it does
 

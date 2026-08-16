@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Reading Mode",
   "version": "1.0.0",
-  "description": "Turn any article into a clean, distraction-free reading view. Click the icon to toggle, Esc to close.",
+  "description": "Turn any article into a clean, distraction-free reading view, and have it read aloud. Click the icon to toggle, Esc to close.",
   "permissions": ["activeTab", "scripting", "storage", "tts"],
   "host_permissions": [
     "https://api.dictionaryapi.dev/*",
