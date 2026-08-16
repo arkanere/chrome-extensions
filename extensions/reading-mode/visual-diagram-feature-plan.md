@@ -140,20 +140,26 @@ click would not be a feature.
 
 ## Click to node id
 
-Verified against the vendored bundle, not assumed. Every node group is written
-with `.attr("id", t.domId || t.id)`, but the two diagram types differ:
+Read out of a real render, after reading it out of the bundle got it wrong.
 
-- **Flowchart** — dom id embeds the id we wrote: `flowchart-<ourId>-<n>`.
-  Parse it back out.
-- **Mindmap** — dom id is `node_0`, `node_1`, …, a counter assigned in parse
-  order. Our id does not survive. Parse order is our depth-first emission
-  order, so the mapping is positional: keep the emission order as an array and
-  index into it.
+Both types are prefixed with the render id. Mermaid's shared layout entry
+rewrites every node on its way into the DOM — `f.domId = \`${e.diagramId}-${p}\``
+— which is easy to miss in the minified source because each renderer has
+already set `domId` by then. So nothing that parses these ids may anchor at the
+start:
 
-The mindmap counter is `MindmapDB.count`, reset by `clear()` on every parse, so
-the mapping is per-render and `mindmapSource()` returns its emission order
-alongside the source. Read from the bundle, not yet watched in Chrome — check a
-mindmap click lands on the right node on the first real run.
+- **Flowchart** — `rm-diagram-3-flowchart-<ourId>-<n>`. The id we wrote is what
+  is left after the prefix and the trailing counter, dashes in it and all.
+- **Mindmap** — `rm-diagram-3-node_<n>`. Our id does not survive at all; `n` is
+  `MindmapDB.count++`, assigned in parse order and reset by `clear()` on every
+  parse. Parse order is our depth-first emission order, so the mapping is
+  positional and per-render: `mindmapSource()` returns the emission order
+  alongside the source, and the click indexes into it.
+
+Checked in Chrome against the vendored bundle, both types, including a node id
+that itself ends in `-<digit>` and a label click that starts on a `<p>` inside
+the mindmap's `foreignObject` — the walk up to the node group crosses that
+boundary fine.
 
 ## What to get right
 

@@ -279,16 +279,27 @@ function subsetFor(focusId) {
 
 // Back from a clicked element to our node id. Both diagram types write the
 // group id themselves, but only the flowchart keeps ours inside it.
+//
+// Both ids also carry the render id as a prefix — Mermaid rewrites every
+// node's domId to `${diagramId}-${domId}` on its way into the DOM. Checked in
+// Chrome against this bundle: `rm-diagram-3-flowchart-<ourId>-<n>` and
+// `rm-diagram-3-node_<n>`. Nothing here may anchor at the start of the id.
 function idForElement(el) {
   for (let node = el; node && node !== stage; node = node.parentElement) {
     const domId = node.id;
     if (!domId) continue;
     if (renderedType === "flowchart") {
-      // `flowchart-<ourId>-<counter>`; the greedy group keeps ids with dashes.
-      const m = /^flowchart-(.+)-\d+$/.exec(domId);
-      if (m && nodeById.has(m[1])) return m[1];
+      const at = domId.lastIndexOf("flowchart-");
+      if (at !== -1) {
+        // What is left after the prefix and the trailing counter is our id,
+        // dashes in it and all.
+        const id = domId.slice(at + "flowchart-".length).replace(/-\d+$/, "");
+        if (nodeById.has(id)) return id;
+      }
     } else {
-      const m = /^node_(\d+)$/.exec(domId);
+      // Mindmap drops our id entirely and numbers nodes in parse order, which
+      // is the order mindmapSource() emitted them in.
+      const m = /node_(\d+)$/.exec(domId);
       if (m && renderedOrder) return renderedOrder[Number(m[1])] || null;
     }
   }
