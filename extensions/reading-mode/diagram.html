@@ -8,7 +8,10 @@
 <body>
   <header>
     <h1 id="title">Visual diagram</h1>
-    <span class="hint">Drag to pan · scroll to zoom</span>
+    <!-- The focus path. diagram.js fills it and keeps Back in step with it. -->
+    <button id="back" type="button" disabled>Back</button>
+    <nav id="crumbs"></nav>
+    <span class="hint">Click a node to go deeper · drag to pan · scroll to zoom</span>
   </header>
 
   <!-- diagram.js renders into #stage and transforms it for pan/zoom. -->

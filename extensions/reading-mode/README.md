@@ -57,6 +57,12 @@ scroll to zoom. The model picks the shape: a mind map for articles that explain
 a topic, a flow diagram for ones that describe a process, a sequence, or an
 argument.
 
+The tab never shows the whole graph at once — a 35-node diagram is unreadable.
+It opens on the centre and its top-level branches, and clicking any node
+replaces the view with that node and the level below it. The breadcrumb in the
+top bar shows where you are and jumps back to any level; Back and Esc step up
+one. Nodes with nothing below them are not clickable.
+
 Generating takes a few seconds and the button says "Generating…" while it
 works — the tab opens only once the diagram is ready, so a failure shows up as
 a notice in the reader rather than an empty tab. The button only appears when a

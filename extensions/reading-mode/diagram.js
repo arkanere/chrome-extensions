@@ -2,10 +2,32 @@
 // source, renders it, and wires pan/zoom. Generating the Mermaid here (rather
 // than asking the model for it) is what keeps label escaping in one place —
 // see visual-diagram-feature-plan.md.
+//
+// The view never shows the whole graph: it shows one focus node and the level
+// directly below it. Clicking a node moves focus down, the breadcrumb and Esc
+// move it back up. Each move re-renders from a filtered graph rather than
+// hiding nodes, because Mermaid bakes coordinates into the SVG and hidden
+// nodes would leave holes.
 
 const canvas = document.getElementById("canvas");
 const stage = document.getElementById("stage");
 const notice = document.getElementById("notice");
+const crumbsEl = document.getElementById("crumbs");
+const backBtn = document.getElementById("back");
+
+// Used when the graph has no single entry point: a stand-in centre labelled
+// with the article title, whose children are the real roots.
+const ROOT = "rmroot";
+
+let graph = null;
+const nodeById = new Map();
+const childrenOf = new Map(); // node id -> child nodes, one level
+const edgeLabels = new Map(); // "from\0to" -> edge label (flowchart only)
+let path = []; // node ids, root first, current focus last
+let renderedType = null;
+let renderedOrder = null; // mindmap only: dom index -> our node id
+let renderSeq = 0;
+let fit = () => {};
 
 function fail(message) {
   canvas.hidden = true;
@@ -37,11 +59,16 @@ function flowchartSource(graph) {
     const arrow = e.label ? `-->|"${clean(e.label)}"|` : "-->";
     lines.push(`  ${e.from} ${arrow} ${e.to}`);
   }
-  return lines.join("\n");
+  return { source: lines.join("\n"), order: null };
 }
 
 // Mermaid's mindmap grammar has no id references: nesting *is* indentation,
 // so this walks parent pointers depth-first at two spaces per level.
+//
+// `order` is that same depth-first sequence. Mermaid numbers mindmap nodes
+// `node_0`, `node_1`, … in parse order and drops our ids, so the emission
+// order is the only way back from a clicked element to a node id. The counter
+// resets per render (MindmapDB.clear), so the mapping holds for this SVG only.
 function mindmapSource(graph) {
   const children = new Map();
   for (const n of graph.nodes) {
@@ -51,11 +78,13 @@ function mindmapSource(graph) {
   }
 
   const lines = ["mindmap"];
+  const order = [];
   const seen = new Set();
   const walk = (node, depth) => {
     if (seen.has(node.id)) return; // defensive: a cycle would never return
     seen.add(node.id);
     lines.push(`${"  ".repeat(depth)}${node.id}["${clean(node.label)}"]`);
+    order.push(node.id);
     for (const child of children.get(node.id) || []) walk(child, depth + 1);
   };
 
@@ -63,13 +92,15 @@ function mindmapSource(graph) {
   if (roots.length === 1) {
     // A single root is the article's own centre; use it rather than adding one.
     lines.push(`  ${roots[0].id}(("${clean(roots[0].label)}"))`);
+    order.push(roots[0].id);
     seen.add(roots[0].id);
     for (const child of children.get(roots[0].id) || []) walk(child, 2);
   } else {
-    lines.push(`  rmroot(("${clean(graph.title)}"))`);
+    lines.push(`  ${ROOT}(("${clean(graph.title)}"))`);
+    order.push(ROOT);
     for (const root of roots) walk(root, 2);
   }
-  return lines.join("\n");
+  return { source: lines.join("\n"), order };
 }
 
 // The two diagram types need different settings, so each render gets its own
@@ -192,12 +223,186 @@ function setupPanZoom() {
   };
 }
 
+// One level of children per node. A mindmap already carries a tree in its
+// `parent` pointers; a flowchart's edges make a graph, so children are the
+// forward edges out of a node and a node can be reached from several parents.
+// That is why focus is tracked as a remembered path rather than a lookup.
+function buildIndex() {
+  for (const n of graph.nodes) nodeById.set(n.id, n);
+
+  if (graph.type === "mindmap") {
+    for (const n of graph.nodes) {
+      if (!n.parent) continue;
+      if (!childrenOf.has(n.parent)) childrenOf.set(n.parent, []);
+      childrenOf.get(n.parent).push(n);
+    }
+  } else {
+    for (const e of graph.edges) {
+      if (e.label) edgeLabels.set(e.from + "\0" + e.to, e.label);
+      if (!childrenOf.has(e.from)) childrenOf.set(e.from, []);
+      const kids = childrenOf.get(e.from);
+      if (!kids.some((k) => k.id === e.to)) kids.push(nodeById.get(e.to));
+    }
+  }
+
+  let roots =
+    graph.type === "mindmap"
+      ? graph.nodes.filter((n) => !n.parent)
+      : graph.nodes.filter((n) => !graph.edges.some((e) => e.to === n.id));
+  // A flowchart that is all cycles has no entry node; start somewhere rather
+  // than showing nothing.
+  if (!roots.length) roots = [graph.nodes[0]];
+
+  if (roots.length === 1) return roots[0].id;
+  nodeById.set(ROOT, { id: ROOT, label: graph.title });
+  childrenOf.set(ROOT, roots);
+  return ROOT;
+}
+
+// The graph actually rendered: the focus node plus one level below it.
+function subsetFor(focusId) {
+  const focus = nodeById.get(focusId);
+  const kids = childrenOf.get(focusId) || [];
+  const nodes = [
+    { id: focus.id, label: focus.label },
+    ...kids.map((k) => ({ id: k.id, label: k.label, parent: focus.id })),
+  ];
+  const edges =
+    graph.type === "mindmap"
+      ? []
+      : kids.map((k) => {
+          const label = edgeLabels.get(focus.id + "\0" + k.id);
+          return label ? { from: focus.id, to: k.id, label } : { from: focus.id, to: k.id };
+        });
+  return { type: graph.type, title: graph.title, nodes, edges };
+}
+
+// Back from a clicked element to our node id. Both diagram types write the
+// group id themselves, but only the flowchart keeps ours inside it.
+function idForElement(el) {
+  for (let node = el; node && node !== stage; node = node.parentElement) {
+    const domId = node.id;
+    if (!domId) continue;
+    if (renderedType === "flowchart") {
+      // `flowchart-<ourId>-<counter>`; the greedy group keeps ids with dashes.
+      const m = /^flowchart-(.+)-\d+$/.exec(domId);
+      if (m && nodeById.has(m[1])) return m[1];
+    } else {
+      const m = /^node_(\d+)$/.exec(domId);
+      if (m && renderedOrder) return renderedOrder[Number(m[1])] || null;
+    }
+  }
+  return null;
+}
+
+function hasChildren(id) {
+  return Boolean((childrenOf.get(id) || []).length);
+}
+
+// Focusing a childless node would give a screen with one box on it, so those
+// clicks are ignored — and the cursor should not suggest otherwise.
+function markClickable() {
+  const focusId = path[path.length - 1];
+  for (const group of stage.querySelectorAll("g[id]")) {
+    const id = idForElement(group);
+    if (id && id !== focusId && hasChildren(id)) group.classList.add("rm-clickable");
+  }
+}
+
+async function render() {
+  const sub = subsetFor(path[path.length - 1]);
+  // The mindmap grammar is the fussiest part of Mermaid, so a label it chokes
+  // on falls back to a flowchart rather than an empty page. This runs on every
+  // focus change, not just at load, so the render id has to stay unique across
+  // renders as well as across the two attempts.
+  const attempts =
+    sub.type === "mindmap"
+      ? [
+          ["mindmap", mindmapSource],
+          ["flowchart", flowchartSource],
+        ]
+      : [["flowchart", flowchartSource]];
+
+  for (const [type, build] of attempts) {
+    try {
+      const { source, order } = build(sub);
+      mermaid.initialize(themeFor(type));
+      const { svg } = await mermaid.render("rm-diagram-" + renderSeq++, source);
+      stage.innerHTML = svg;
+      renderedType = type;
+      renderedOrder = order;
+      markClickable();
+      fit();
+      return true;
+    } catch (e) {
+      console.warn("Reading Mode: diagram render failed.", e);
+    }
+  }
+  return false;
+}
+
+function shorten(text) {
+  const label = String(text).replace(/\s+/g, " ").trim();
+  return label.length > 28 ? label.slice(0, 27) + "…" : label;
+}
+
+// The breadcrumb does two jobs: it says where you are, and it is the only
+// thing on screen that hints the nodes are clickable at all.
+function drawCrumbs() {
+  crumbsEl.textContent = "";
+  path.forEach((id, i) => {
+    if (i) {
+      const sep = document.createElement("span");
+      sep.className = "sep";
+      sep.textContent = "›";
+      crumbsEl.append(sep);
+    }
+    const crumb = document.createElement("button");
+    crumb.className = "crumb";
+    crumb.textContent = shorten(nodeById.get(id).label);
+    crumb.title = nodeById.get(id).label;
+    crumb.disabled = i === path.length - 1;
+    crumb.addEventListener("click", () => goTo(path.slice(0, i + 1)));
+    crumbsEl.append(crumb);
+  });
+  backBtn.disabled = path.length < 2;
+}
+
+function goTo(next) {
+  if (next.length === path.length) return;
+  path = next;
+  drawCrumbs();
+  render();
+}
+
+function setupFocus() {
+  let downX = 0;
+  let downY = 0;
+  canvas.addEventListener("mousedown", (e) => {
+    downX = e.clientX;
+    downY = e.clientY;
+  });
+  canvas.addEventListener("click", (e) => {
+    // A pan starts on any mousedown over the canvas, so anything that moved
+    // more than a few pixels was a drag, not a click.
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) > 4) return;
+    const id = idForElement(e.target);
+    if (!id || id === path[path.length - 1] || !hasChildren(id)) return;
+    goTo([...path, id]);
+  });
+
+  backBtn.addEventListener("click", () => goTo(path.slice(0, -1)));
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape") goTo(path.slice(0, -1));
+  });
+}
+
 async function main() {
   const id = new URLSearchParams(location.search).get("id");
   if (!id) return fail("No diagram to show.");
 
   const key = "rm-diagram-" + id;
-  const graph = (await chrome.storage.session.get(key))[key];
+  graph = (await chrome.storage.session.get(key))[key];
   if (!graph || !graph.nodes || !graph.nodes.length) {
     return fail("This diagram has expired. Create it again from the reader.");
   }
@@ -205,30 +410,12 @@ async function main() {
   document.getElementById("title").textContent = graph.title;
   document.title = graph.title;
 
-  // The mindmap grammar is the fussiest part of Mermaid, so a label it chokes
-  // on falls back to a flowchart rather than an empty page.
-  const attempts =
-    graph.type === "mindmap"
-      ? [["mindmap", mindmapSource(graph)], ["flowchart", flowchartSource(graph)]]
-      : [["flowchart", flowchartSource(graph)]];
+  path = [buildIndex()];
+  fit = setupPanZoom();
+  setupFocus();
+  drawCrumbs();
 
-  let svg = null;
-  for (let i = 0; i < attempts.length; i++) {
-    const [type, source] = attempts[i];
-    try {
-      mermaid.initialize(themeFor(type));
-      // A fresh id per attempt: a failed render leaves its scratch element
-      // behind, and reusing the id would collide with it.
-      ({ svg } = await mermaid.render("rm-diagram-" + i, source));
-      break;
-    } catch (e) {
-      console.warn("Reading Mode: diagram render failed.", e);
-    }
-  }
-  if (!svg) return fail("Couldn't draw this diagram.");
-
-  stage.innerHTML = svg;
-  setupPanZoom()();
+  if (!(await render())) fail("Couldn't draw this diagram.");
 }
 
 main();

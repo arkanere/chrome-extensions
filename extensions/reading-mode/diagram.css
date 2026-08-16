@@ -49,9 +49,63 @@ h1 {
   font-size: 14px;
   font-weight: 600;
   margin: 0;
+  flex: none;
+  max-width: 30ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Focus path: Back, then a crumb per level. The crumbs take the slack so a
+   deep path scrolls sideways instead of squeezing the title or the hint. */
+#back {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+#back:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#crumbs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+#crumbs::-webkit-scrollbar { display: none; }
+
+.crumb {
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.crumb:disabled {
+  color: var(--ink-soft);
+  cursor: default;
+}
+
+#crumbs .sep {
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
 .hint {
@@ -83,6 +137,10 @@ h1 {
   height: auto;
   display: block;
 }
+
+/* Only nodes with a level below them do anything when clicked. */
+#stage .rm-clickable { cursor: pointer; }
+#canvas.dragging .rm-clickable { cursor: grabbing; }
 
 #notice {
   margin: 12vh auto;

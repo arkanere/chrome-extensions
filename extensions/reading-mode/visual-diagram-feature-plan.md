@@ -89,7 +89,7 @@ model. The model picks the type; the tab renders and nothing else.
 
 ---
 
-# Focus view — planned, not built
+# Focus view
 
 Testing the first real article (`seangoedecke.com/good-api-design`, 35 nodes)
 showed the diagram renders correctly and reads badly. Edges pass under node
@@ -150,8 +150,10 @@ with `.attr("id", t.domId || t.id)`, but the two diagram types differ:
   order, so the mapping is positional: keep the emission order as an array and
   index into it.
 
-The mindmap correlation is read from the source, not yet seen in Chrome.
-Confirm it on the first run before building on it.
+The mindmap counter is `MindmapDB.count`, reset by `clear()` on every parse, so
+the mapping is per-render and `mindmapSource()` returns its emission order
+alongside the source. Read from the bundle, not yet watched in Chrome — check a
+mindmap click lands on the right node on the first real run.
 
 ## What to get right
 
@@ -178,3 +180,26 @@ Confirm it on the first run before building on it.
 
 Node count and label length still deserve a prompt-side trim, but that is a
 separate change and this one removes the pressure for it.
+
+## How it came out
+
+All of it lives in `diagram.js`, plus a breadcrumb and a Back button in
+`diagram.html`.
+
+- `buildIndex()` builds one children map for both types and returns the root
+  id. When there is no single entry node — several roots in a mindmap, several
+  entry nodes in a flowchart — it invents an `rmroot` node labelled with the
+  article title, so the rest of the code never special-cases the top.
+- `subsetFor(focusId)` returns a fresh `{ type, title, nodes, edges }` holding
+  the focus and its children only, with `parent` rewritten to the focus. Both
+  source generators take it unchanged, so the mindmap→flowchart fallback still
+  works per render. `renderSeq` keeps the Mermaid render id unique across all
+  renders, not just the two attempts.
+- Focus is `path`, an array of ids. Clicking pushes, Back/Esc pops, a crumb
+  truncates. A flowchart node reachable from two parents therefore keeps the
+  route you took to it.
+- A click counts as a click only if the pointer moved under 4px since
+  `mousedown`; anything more was a pan.
+- Clickable nodes get a `rm-clickable` class after each render, which is the
+  only thing that sets `cursor: pointer`. Leaves get nothing and their clicks
+  return early.
