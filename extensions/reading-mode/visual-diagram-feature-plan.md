@@ -86,3 +86,95 @@ step — and not deleting on read means reloading the diagram tab still works.
 
 Export (SVG download, copy PNG) and a mindmap/flowchart toggle that re-asks the
 model. The model picks the type; the tab renders and nothing else.
+
+---
+
+# Focus view — planned, not built
+
+Testing the first real article (`seangoedecke.com/good-api-design`, 35 nodes)
+showed the diagram renders correctly and reads badly. Edges pass under node
+boxes, boxes touch, and every leaf is a 6–9 word label wrapping to three lines.
+Mermaid's mindmap layout places nodes radially and does no edge-node collision
+avoidance — it cannot know the labels are this long. The whole graph at once is
+the wrong default.
+
+The fix is not layout tuning. It is showing less.
+
+## The rule
+
+**The view shows the focus node and one level below it. Nothing else.**
+
+That one sentence covers both behaviours:
+
+- Focus starts at the root, so the tab opens on the centre plus its L1
+  branches — the high-level view, by default and without a button.
+- Clicking a visible node moves focus to it. Its children appear, its siblings
+  and their subtrees go away.
+- Back steps focus to the parent, one level per press. At the root, back does
+  nothing.
+
+Focus nests: click down as far as the graph goes.
+
+**Why one level and not the whole subtree.** For a three-level graph the two
+are identical, and the article above is three levels — so this costs nothing
+today. On a deeper graph "focus + subtree" reintroduces the crowding this
+feature exists to remove, while "focus + one level" stays readable at any
+depth. Uniform beats special-cased.
+
+## Re-render, don't hide
+
+Hiding nodes in the rendered SVG (`display: none`) is the obvious approach and
+the wrong one. Mermaid emits static SVG with baked-in coordinates, so hidden
+nodes leave holes and the survivors keep positions computed for a graph that is
+no longer on screen. The L1 view suffers most: branch nodes stranded at the
+radius that the now-hidden leaves pushed them to.
+
+Instead, filter the graph and render it again. `flowchartSource()` and
+`mindmapSource()` already take a graph and return source, so a focus change is:
+build the subset, regenerate, `mermaid.render`, re-fit. Layout comes out tight
+and correct every time. One render is 100–300 ms at this size.
+
+Generating Mermaid locally instead of asking the model for it — decided above
+for escaping reasons — is what makes this cheap. Re-asking Gemini on every
+click would not be a feature.
+
+## Click to node id
+
+Verified against the vendored bundle, not assumed. Every node group is written
+with `.attr("id", t.domId || t.id)`, but the two diagram types differ:
+
+- **Flowchart** — dom id embeds the id we wrote: `flowchart-<ourId>-<n>`.
+  Parse it back out.
+- **Mindmap** — dom id is `node_0`, `node_1`, …, a counter assigned in parse
+  order. Our id does not survive. Parse order is our depth-first emission
+  order, so the mapping is positional: keep the emission order as an array and
+  index into it.
+
+The mindmap correlation is read from the source, not yet seen in Chrome.
+Confirm it on the first run before building on it.
+
+## What to get right
+
+- **Drag versus click.** `setupPanZoom()` starts a pan on any `mousedown` over
+  the canvas, so a node click would pan too. Treat movement under ~4px between
+  down and up as a click.
+- **Leaf clicks are a no-op.** Focusing a childless node gives a screen with
+  one box on it. Ignore the click; the cursor should not suggest otherwise.
+- **The render path becomes a function.** The mindmap→flowchart fallback runs
+  once at load today. Every focus change re-runs it, so it has to be callable
+  more than once — including the fresh-id-per-attempt detail, which now needs
+  to stay unique across renders, not just across the two attempts.
+- **Getting back out needs to be visible.** Back on its own is not enough:
+  arriving at the L1 view, nothing says the nodes are clickable. A breadcrumb
+  of the focus path does both jobs — shows where you are, and clicking a crumb
+  jumps straight back to that level. Esc as the keyboard equivalent of back.
+- **The header hint is now wrong.** "Drag to pan · scroll to zoom" should say
+  something about clicking to focus.
+- **Subtree means two things.** For a mindmap, children come from `parent`
+  pointers and the children map already exists. For a flowchart the edges make
+  a graph rather than a tree, so children are the forward edges out of a node
+  and a node can be reached from several parents. Back needs a remembered path
+  there, not a `parent` lookup.
+
+Node count and label length still deserve a prompt-side trim, but that is a
+separate change and this one removes the pressure for it.
