@@ -63,6 +63,11 @@ replaces the view with that node and the level below it. The breadcrumb in the
 top bar shows where you are and jumps back to any level; Back and Esc step up
 one. Nodes with nothing below them are not clickable.
 
+**Show all** puts the whole diagram on screen at once, for when you want to see
+how the parts sit together rather than read one branch. It is cramped on a big
+graph — that is what the focus view exists to avoid — so clicking any node in
+it drops you back into the focus view at that node.
+
 Generating takes a few seconds and the button says "Generating…" while it
 works — the tab opens only once the diagram is ready, so a failure shows up as
 a notice in the reader rather than an empty tab. The button only appears when a

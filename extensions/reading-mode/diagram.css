@@ -58,7 +58,7 @@ h1 {
 
 /* Focus path: Back, then a crumb per level. The crumbs take the slack so a
    deep path scrolls sideways instead of squeezing the title or the hint. */
-#back {
+.bar-btn {
   flex: none;
   font: inherit;
   font-size: 12px;
@@ -70,9 +70,16 @@ h1 {
   cursor: pointer;
 }
 
-#back:disabled {
+.bar-btn:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* Pressed: the whole diagram is on screen and the crumbs are only a way back. */
+.bar-btn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--panel);
 }
 
 #crumbs {
@@ -101,6 +108,10 @@ h1 {
 .crumb:disabled {
   color: var(--ink-soft);
   cursor: default;
+}
+
+#crumbs.muted .crumb {
+  color: var(--ink-soft);
 }
 
 #crumbs .sep {

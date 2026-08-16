@@ -14,6 +14,7 @@ const stage = document.getElementById("stage");
 const notice = document.getElementById("notice");
 const crumbsEl = document.getElementById("crumbs");
 const backBtn = document.getElementById("back");
+const allBtn = document.getElementById("showall");
 
 // Used when the graph has no single entry point: a stand-in centre labelled
 // with the article title, whose children are the real roots.
@@ -24,6 +25,7 @@ const nodeById = new Map();
 const childrenOf = new Map(); // node id -> child nodes, one level
 const edgeLabels = new Map(); // "from\0to" -> edge label (flowchart only)
 let path = []; // node ids, root first, current focus last
+let showAll = false; // whole graph on screen, focus path kept for the way back
 let renderedType = null;
 let renderedOrder = null; // mindmap only: dom index -> our node id
 let renderSeq = 0;
@@ -310,10 +312,33 @@ function hasChildren(id) {
   return Boolean((childrenOf.get(id) || []).length);
 }
 
+// Shortest route from the root down to a node, so a click in the whole-diagram
+// view can hand the focus view a path it could have walked itself. Breadth
+// first because a flowchart node can be reached several ways and the shortest
+// is the least surprising of them.
+function pathTo(target) {
+  const root = path[0];
+  const queue = [[root]];
+  const seen = new Set([root]);
+  while (queue.length) {
+    const route = queue.shift();
+    const last = route[route.length - 1];
+    if (last === target) return route;
+    for (const child of childrenOf.get(last) || []) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      queue.push([...route, child.id]);
+    }
+  }
+  return [root, target];
+}
+
 // Focusing a childless node would give a screen with one box on it, so those
-// clicks are ignored — and the cursor should not suggest otherwise.
+// clicks are ignored — and the cursor should not suggest otherwise. In the
+// whole-diagram view the focus node is on screen with everything else, and
+// clicking it is the way back into the focus view, so nothing is excluded.
 function markClickable() {
-  const focusId = path[path.length - 1];
+  const focusId = showAll ? null : path[path.length - 1];
   for (const group of stage.querySelectorAll("g[id]")) {
     const id = idForElement(group);
     if (id && id !== focusId && hasChildren(id)) group.classList.add("rm-clickable");
@@ -321,7 +346,10 @@ function markClickable() {
 }
 
 async function render() {
-  const sub = subsetFor(path[path.length - 1]);
+  // The whole graph is what the focus view exists to avoid, but it is also the
+  // only way to see how the parts sit together — so it is a mode, not a
+  // default, and every node in it is a way back into the focus view.
+  const sub = showAll ? graph : subsetFor(path[path.length - 1]);
   // The mindmap grammar is the fussiest part of Mermaid, so a label it chokes
   // on falls back to a flowchart rather than an empty page. This runs on every
   // focus change, not just at load, so the render id has to stay unique across
@@ -372,16 +400,22 @@ function drawCrumbs() {
     crumb.className = "crumb";
     crumb.textContent = shorten(nodeById.get(id).label);
     crumb.title = nodeById.get(id).label;
-    crumb.disabled = i === path.length - 1;
+    // In the whole-diagram view even the last crumb does something: it is the
+    // way back to the focus you left.
+    crumb.disabled = !showAll && i === path.length - 1;
     crumb.addEventListener("click", () => goTo(path.slice(0, i + 1)));
     crumbsEl.append(crumb);
   });
-  backBtn.disabled = path.length < 2;
+  crumbsEl.classList.toggle("muted", showAll);
+  backBtn.disabled = !showAll && path.length < 2;
+  allBtn.textContent = showAll ? "Focus view" : "Show all";
+  allBtn.setAttribute("aria-pressed", String(showAll));
 }
 
-function goTo(next) {
-  if (next.length === path.length) return;
+function goTo(next, all = false) {
+  if (next.length === path.length && all === showAll) return;
   path = next;
+  showAll = all;
   drawCrumbs();
   render();
 }
@@ -398,13 +432,19 @@ function setupFocus() {
     // more than a few pixels was a drag, not a click.
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 4) return;
     const id = idForElement(e.target);
-    if (!id || id === path[path.length - 1] || !hasChildren(id)) return;
-    goTo([...path, id]);
+    if (!id || !hasChildren(id)) return;
+    // From the whole diagram a click lands on the focus view at that node;
+    // from the focus view it steps one level down.
+    if (showAll) goTo(pathTo(id));
+    else if (id !== path[path.length - 1]) goTo([...path, id]);
   });
 
-  backBtn.addEventListener("click", () => goTo(path.slice(0, -1)));
+  // Back and Esc leave the whole-diagram view first, then step up a level.
+  const up = () => (showAll ? goTo(path, false) : goTo(path.slice(0, -1)));
+  backBtn.addEventListener("click", up);
+  allBtn.addEventListener("click", () => goTo(path, !showAll));
   addEventListener("keydown", (e) => {
-    if (e.key === "Escape") goTo(path.slice(0, -1));
+    if (e.key === "Escape") up();
   });
 }
 

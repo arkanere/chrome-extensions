@@ -209,3 +209,19 @@ All of it lives in `diagram.js`, plus a breadcrumb and a Back button in
 - Clickable nodes get a `rm-clickable` class after each render, which is the
   only thing that sets `cursor: pointer`. Leaves get nothing and their clicks
   return early.
+
+## Show all
+
+The focus view removed the crowding and with it the only way to see the shape
+of the whole thing. **Show all** is that view back, as a mode rather than the
+default: `render()` passes the unfiltered graph instead of a subset, and
+everything else — pan, zoom, the id parsing — is unchanged.
+
+It stays crowded, because that is what the graph is. What makes it useful
+anyway is that it is also a picker: clicking any node there lands on the focus
+view at that node, so the wide view is how you choose where to read. `pathTo()`
+finds the route breadth-first, which matters only for flowcharts, where a node
+can be reached several ways and the shortest route is the least surprising one.
+
+The focus path survives the trip, so Back, Esc, and the crumbs all return to
+where you were.
