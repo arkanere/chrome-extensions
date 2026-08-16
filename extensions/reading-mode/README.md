@@ -28,7 +28,31 @@ clicking it copies them all to the clipboard as plain text (one passage per
 paragraph), ready to paste anywhere. Click a highlight to remove it.
 
 Highlights are session-only: they live while the overlay is open and vanish
-when you close it. Nothing is stored.
+when you close it.
+
+## Read aloud
+
+The top bar's **Read aloud** button has the article read to you, lighting up the
+word being spoken and the sentence around it as it goes. `↑` and `↓` step back
+and forward a sentence, the slider sets the speed, and the picker chooses the
+voice. Click any word in the article to start reading from there — dragging to
+select still selects, so the two gestures don't collide.
+
+Pause is stop-and-remember: pausing, seeking, or changing the voice or speed all
+drop the current utterance and re-speak the sentence from its start, so there is
+no half-spoken sentence to be confused by. **Esc** stops the voice before it
+closes the reader.
+
+Speech uses Chrome's own `chrome.tts` voices. The picker lists only voices that
+report word timing, since the word highlight is half the point; the Natural
+voices are grouped first and are the ones this is built around. They synthesise
+locally, so nothing about reading aloud leaves the browser. If a voice you saved
+is no longer installed, the best available one is used instead and the console
+says so.
+
+Your voice, your speed, and where you stopped in each article are remembered —
+see *What is stored* below. This is the same feature, with the same controls,
+as in the sibling `pdf-reader` and `epub-reader` extensions.
 
 ## Define
 
@@ -78,6 +102,19 @@ Long articles are truncated to the first ~40,000 characters.
 Diagrams are session-only, like highlights: they live in
 `chrome.storage.session` and are gone when you quit the browser.
 
+## What is stored
+
+Read aloud is the first thing Reading Mode keeps. In `chrome.storage.local`, on
+your machine only:
+
+- your chosen voice and speed, one setting for the whole extension
+- where you stopped reading each article — its URL, its title, and a character
+  offset into its text. The last 200 articles are kept; older ones are dropped.
+  Reaching the end of an article forgets its position
+
+Everything else is still session-only: highlights vanish with the overlay, and
+diagrams live in `chrome.storage.session` until you quit the browser.
+
 ## What leaves the browser
 
 Define sends the selected term to `api.dictionaryapi.dev` and/or
@@ -92,13 +129,31 @@ worker so page CSP can't block them.
 Nothing runs until you click the icon. `background.js` injects
 `lib/Readability.js` + `content.js` into the active tab on each click; the
 content script guards with a window flag, so the first injection opens the
-overlay and every later one toggles it. Permissions are just `activeTab` +
-`scripting` — no broad host access, no storage, nothing phones home.
+overlay and every later one toggles it. Permissions are `activeTab`,
+`scripting`, `storage` and `tts` — no broad host access beyond the three lookup
+hosts above, and nothing phones home.
+
+Read aloud is split across the two: `chrome.tts` is not available to content
+scripts, so the service worker does the speaking and the reader drives it over a
+long-lived port. No playback state lives in the worker — MV3 suspends it after
+~30s idle — so it is a speaker, not a player. `tts-plan.md` has the reasoning;
+the modules under `speech/`, `player/`, `core/`, `view/` and `store/` are copied
+from `epub-reader`, which is the repo's rule for shared code.
 
 ## Surprises worth knowing
 
 - `reader.css` is fetched by the content script at runtime, which is why it's
-  listed under `web_accessible_resources` in the manifest
+  listed under `web_accessible_resources` in the manifest. So are the read-aloud
+  modules: `content.js` is injected as a classic script and cannot use `import`
+  statements, so it pulls them in with dynamic `import()` at runtime
+- the `::highlight()` rules for the spoken word live in `reader.css` and nowhere
+  else. `CSS.highlights` is a global registry, but `::highlight()` *styling*
+  resolves against the tree the range is in — and every range painted is inside
+  the reader's shadow root, which is where `reader.css` is injected
+- adding or removing an in-page highlight splits or merges the article's text
+  nodes, which silently invalidates every word the speech model is holding. The
+  model is re-walked and rebound after each, and the failure it prevents is
+  invisible rather than loud
 - `lib/Readability.js` is vendored verbatim from mozilla/readability (Apache
   2.0). To update it, replace the file with the latest from their repo
 - `lib/mermaid.min.js` is vendored the same way (MIT, v11.16.1, 3.6 MB —

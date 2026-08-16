@@ -3,7 +3,7 @@
   "name": "Reading Mode",
   "version": "1.0.0",
   "description": "Turn any article into a clean, distraction-free reading view. Click the icon to toggle, Esc to close.",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "tts"],
   "host_permissions": [
     "https://api.dictionaryapi.dev/*",
     "https://en.wikipedia.org/*",
@@ -28,7 +28,16 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["reader.css"],
+      "resources": [
+        "reader.css",
+        "speech/adapter.js",
+        "player/controller.js",
+        "core/text-walk.js",
+        "core/document-model.js",
+        "view/controls.js",
+        "view/highlighter.js",
+        "store/settings.js"
+      ],
       "matches": ["http://*/*", "https://*/*"]
     }
   ]

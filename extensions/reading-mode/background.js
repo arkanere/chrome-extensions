@@ -315,6 +315,87 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// --- Read aloud ------------------------------------------------------------
+//
+// chrome.tts is not exposed to content scripts, and our reader is a content
+// script — so the worker does the speaking and the reader drives it over a
+// long-lived port. See tts-plan.md.
+//
+// No playback state lives here. MV3 workers suspend after ~30s idle, so a
+// position kept in this file would evaporate; the worker is a speaker, not a
+// player. The only thing it holds is the live utterance's token, so events from
+// an utterance the reader has already abandoned can be labelled and dropped on
+// the other side.
+
+// chrome.tts's event objects are not structured-cloneable as they come, and only
+// three fields ever cross.
+function plainEvent(event) {
+  return {
+    type: event.type,
+    charIndex: event.charIndex,
+    errorMessage: event.errorMessage,
+  };
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "rm-tts") return;
+
+  port.onMessage.addListener((msg) => {
+    if (msg.type === "voices") {
+      chrome.tts.getVoices((voices) => {
+        port.postMessage({
+          type: "voices",
+          id: msg.id,
+          voices: (voices || []).map((v) => ({
+            voiceName: v.voiceName,
+            remote: v.remote,
+            eventTypes: v.eventTypes || [],
+          })),
+        });
+      });
+      return;
+    }
+
+    if (msg.type === "speak") {
+      chrome.tts.speak(
+        msg.text,
+        {
+          ...msg.options,
+          onEvent: (event) =>
+            port.postMessage({
+              type: "event",
+              token: msg.token,
+              event: plainEvent(event),
+            }),
+        },
+        () => {
+          // A rejected utterance never fires an event, so the reader would wait
+          // forever. Reported as an error event, which is the shape the speech
+          // adapter already handles.
+          if (chrome.runtime.lastError) {
+            port.postMessage({
+              type: "event",
+              token: msg.token,
+              event: {
+                type: "error",
+                errorMessage: chrome.runtime.lastError.message,
+              },
+            });
+          }
+        }
+      );
+      return;
+    }
+
+    if (msg.type === "stop") chrome.tts.stop();
+    // "ping" falls through: its only job is to reset the worker's idle timer.
+  });
+
+  // The reader closed, or its tab went away, mid-sentence. chrome.tts speaks at
+  // the extension level, so nothing else would stop the voice.
+  port.onDisconnect.addListener(() => chrome.tts.stop());
+});
+
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id || !/^https?:/.test(tab.url ?? "")) return;
   try {

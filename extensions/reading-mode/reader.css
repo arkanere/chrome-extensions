@@ -90,6 +90,95 @@
   cursor: default;
 }
 
+/* --- Read aloud --------------------------------------------------------- */
+/* Built by view/controls.js into .rm-controls, so only the arrangement is
+   here. Same widgets in the same order as pdf-reader's and epub-reader's
+   headers — parity of arrangement, not of colour: theirs are grey, these take
+   reader.css's warm palette. */
+
+.rm-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
+  border-right: 1px solid var(--rule);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.rm-controls button {
+  font: inherit;
+  font-size: 13px;
+  width: 28px;
+  height: 28px;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.rm-controls button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.rm-controls button:disabled {
+  color: var(--ink-soft);
+  cursor: default;
+}
+
+.rm-controls button.wide {
+  width: auto;
+  padding: 0 12px;
+}
+
+.rm-controls .speed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rm-controls .speed input {
+  width: 72px;
+  accent-color: var(--accent);
+}
+
+.rm-controls .speed-value {
+  font-size: 12px;
+  color: var(--ink-soft);
+  min-width: 34px;
+}
+
+.rm-controls select {
+  font: inherit;
+  font-size: 12px;
+  max-width: 170px;
+  height: 28px;
+  padding: 0 4px;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+/* Painted by the browser onto the real glyph boxes, not by markup — so the
+   <mark> the Highlights feature wraps text in is never fought over, and
+   nothing under the reader's feet is mutated per word.
+
+   These rules must live in this file and nowhere else. CSS.highlights is a
+   global registry, but ::highlight() styling resolves against the tree the
+   range is in, and every range we paint is inside the reader's shadow root —
+   which this stylesheet is injected into. The two colours are the siblings'
+   exactly, so all three extensions look the same while reading. */
+
+::highlight(rm-sentence) {
+  background-color: rgba(255, 214, 102, 0.34);
+}
+
+::highlight(rm-word) {
+  background-color: rgba(255, 165, 38, 0.6);
+}
+
 article {
   max-width: 66ch;
   margin: 0 auto;
