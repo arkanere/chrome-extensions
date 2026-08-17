@@ -39,10 +39,6 @@ my-youtube/
     lib/
       extract.js         DOM card -> video object   (the fragile file)
       seen.js            seen/unseen state in chrome.storage.local
-      settings.js        read/write options
-  options/
-    options.html
-    options.js
 ```
 
 ### Why the CSS is separate and static
@@ -148,25 +144,33 @@ YouTube changes its markup, exactly one small file needs fixing. `extract.js`
 returns `null` for a card it cannot parse rather than throwing, and the feed
 logs a count of unparsed cards so breakage is visible instead of silent.
 
-## Options
+## No options page
 
-A small options page with toggles, because not every rule should be
-all-or-nothing:
+Deliberately dropped. Every rule here is something we always want on, so a
+page of toggles that are all switched on by default earns nothing and adds a
+settings layer every module would have to read through.
 
-- redirect homepage (on)
-- hide Shorts (on)
-- hide related sidebar (on)
-- hide endscreen and cards (on)
-- group feed by channel (on)
-- hide seen videos entirely, instead of dimming (off)
+If one rule later turns out to need turning off, that is the moment to add a
+setting for it — not before.
 
 ## Build order
+
+All four steps are built.
 
 1. `manifest.json` + `clean.css` + `home.js`. Installable, already useful.
 2. `watch.js`.
 3. `extract.js` + `subs.js` read-only: rebuild the feed with no state,
    including the observer that folds in lazy-loaded cards.
 4. `seen.js` and the seen/unseen behaviour.
-5. Options page.
 
-Each step is independently shippable.
+## Known trade-offs
+
+Written down so they are choices rather than surprises later:
+
+- A channel with one new video still gets a whole row. Grouping pays off for a
+  channel that posted sixteen and costs space everywhere else. Left as is.
+- The feed covers what YouTube has loaded, not a fixed time window (see
+  "Observe, don't drive").
+- YouTube is mid-migration between two card markups. `extract.js` reads the new
+  `yt-lockup-view-model` form and falls back to the older `ytd-*` one, because
+  search results still use the old.
