@@ -113,6 +113,12 @@ insert heading elements between them and reorder them behind their heading.
    That fires no mutation of any kind, so a card filed under one channel
    silently becomes a video from another and the grouping reads as broken.
 
+**Scroll anchoring.** Grouping means a newly loaded video joins its channel's
+group, which may be far above the viewport; everything below then shifts down
+and the page moves under you. Browsers correct for appended content on their
+own but not for nodes we move around, so each pass records the first visible
+card, and scrolls by however far that card moved afterwards.
+
 Because of rule 4 nothing is remembered about a card between passes. Every pass
 re-reads all cards from the DOM and re-arranges the grid to match. Passes are
 triggered by mutations *and by scrolling* — recycling produces no mutation, so

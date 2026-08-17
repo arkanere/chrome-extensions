@@ -161,6 +161,29 @@ function rebuild() {
   return { placed, unparsed, total: cards.length };
 }
 
+/*
+ * The first card still visible, and where it sits.
+ *
+ * Grouping means a newly loaded video joins its channel's group, which may be
+ * far above the viewport. Everything below it then shifts down and the page
+ * moves under you. Browsers do this correction themselves for appended
+ * content, but not for nodes we move around, so we do it by hand.
+ */
+function anchorPoint() {
+  for (const card of contents.querySelectorAll("ytd-rich-item-renderer")) {
+    const box = card.getBoundingClientRect();
+    if (box.bottom > 0) return { card, top: box.top };
+  }
+  return null;
+}
+
+function restoreAnchor(anchor) {
+  if (!anchor || !anchor.card.isConnected) return;
+  const moved = anchor.card.getBoundingClientRect().top - anchor.top;
+  /* Sub-pixel drift is not worth a scroll, and scrolling would re-trigger us. */
+  if (Math.abs(moved) > 1) window.scrollBy(0, moved);
+}
+
 function scan() {
   if (stopped) return;
 
@@ -169,7 +192,9 @@ function scan() {
    * or the observer would trigger itself without end.
    */
   if (observer) observer.disconnect();
+  const anchor = anchorPoint();
   const result = rebuild();
+  restoreAnchor(anchor);
   if (observer && !stopped) {
     observer.takeRecords();
     observer.observe(contents, { childList: true });
