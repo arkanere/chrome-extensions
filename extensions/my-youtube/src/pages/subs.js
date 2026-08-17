@@ -101,7 +101,13 @@ function scan(contents) {
   for (const card of cards) processCard(card, contents);
 
   if (unparsed) {
-    console.warn("[my-youtube] could not parse " + unparsed + " cards");
+    console.warn(
+      "[my-youtube] could not parse " +
+        unparsed +
+        " cards (extract v" +
+        MyYT.EXTRACT_VERSION +
+        ")"
+    );
     unparsed = 0;
   }
 }

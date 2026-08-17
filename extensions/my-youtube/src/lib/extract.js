@@ -14,6 +14,13 @@
  * old, so both work.
  */
 
+/*
+ * Bumped whenever the selectors change. Logged with the parse-failure count
+ * so a stale extension (edited on disk but not reloaded in chrome://extensions)
+ * is obvious instead of looking like a selector bug.
+ */
+MyYT.EXTRACT_VERSION = 2;
+
 function text(el) {
   return el ? el.textContent.trim() : "";
 }
@@ -24,26 +31,23 @@ function isDuration(s) {
 }
 
 function findChannel(card) {
-  /* Preferred: a real link, whose href is a stabler key than the display
-   * name because names can be changed or localised. */
-  const link = card.querySelector('a[href^="/@"], a[href^="/channel/"]');
-  if (link && text(link)) {
-    return { channel: text(link), channelId: link.getAttribute("href").split("?")[0] };
-  }
+  const link = card.querySelector(
+    'a[href^="/@"], a[href^="/channel/"], ytd-channel-name a, #channel-name a'
+  );
 
-  /* New markup sometimes renders the channel as plain text. Fall back to the
-   * first metadata row and key on the name itself. */
-  const row = card.querySelector(".ytContentMetadataViewModelMetadataRow");
-  const name = text(row);
-  if (name) return { channel: name, channelId: "name:" + name };
+  /*
+   * In the new markup the only channel link is often the avatar, which holds
+   * an image and no text, while the name sits in the first metadata row. So
+   * take the name and the id from wherever each is actually available.
+   */
+  const name = text(link) || text(card.querySelector(".ytContentMetadataViewModelMetadataRow"));
+  if (!name) return null;
 
-  /* Old markup. */
-  const old = card.querySelector("ytd-channel-name a, #channel-name a");
-  if (old && text(old)) {
-    return { channel: text(old), channelId: old.getAttribute("href").split("?")[0] };
-  }
+  /* The href is a stabler key than the display name, which can be renamed
+   * or localised. Fall back to the name only when there is no link at all. */
+  const href = link ? link.getAttribute("href").split("?")[0] : "";
 
-  return null;
+  return { channel: name, channelId: href || "name:" + name };
 }
 
 function findDuration(card) {
