@@ -46,16 +46,18 @@
   opacity: 0.6;
 }
 
+/*
+ * Wrap rather than grid. YouTube sets its own width on the lockup inside each
+ * card, so forcing cards into grid cells of our choosing just made the two
+ * disagree. Let the cards keep their natural size and only lay them out.
+ */
 .myyt-group__items {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 16px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
-/* YouTube sizes cards for its own grid; inside ours they fill their cell. */
 .myyt-group__items ytd-rich-item-renderer {
-  width: 100% !important;
-  max-width: none !important;
   margin: 0 !important;
 }
 
