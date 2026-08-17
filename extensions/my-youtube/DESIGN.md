@@ -65,9 +65,15 @@ redirect.
 
 ### Watch page — `watch.js`
 
-Mostly CSS: hide `#related` and let the player column take the full width, hide
-the endscreen overlay and info cards. The JS part is only the bits that YouTube
-re-adds after navigation.
+Mostly CSS: hide the `#secondary` column, drop the width cap on `#primary`, and
+hide the in-player suggestion layers (end grid, creator end cards, info card
+teaser and button, pause overlay).
+
+The one thing CSS cannot do is resize the player. YouTube measures available
+width in JavaScript and writes pixel sizes onto the player, so hiding the
+related column leaves the video at its old size in dead space. `watch.js`
+fires a `resize` event on the next frame — the same signal YouTube uses for a
+real viewport change — to make it measure again.
 
 ### Subscription feed — `subs.js`
 

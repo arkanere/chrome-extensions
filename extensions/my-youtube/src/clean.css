@@ -38,3 +38,33 @@ ytd-guide-entry-renderer:has(a[title="Shorts"]),
 ytd-mini-guide-entry-renderer:has(a[title="Shorts"]) {
   display: none !important;
 }
+
+/* --- Watch page: related column ---------------------------------------- */
+
+/*
+ * The up-next column. Removing it frees the width, but YouTube sizes the
+ * player in JS from a width it measured while this column still existed, so
+ * watch.js has to make it measure again.
+ */
+ytd-watch-flexy #secondary {
+  display: none !important;
+}
+
+ytd-watch-flexy #primary {
+  max-width: none !important;
+}
+
+/* --- Watch page: in-player suggestions ---------------------------------- */
+
+/*
+ * Everything the player overlays on the video to sell you the next one:
+ * the end grid, the creator's own end cards, the teaser and its (i) button,
+ * and the suggestion wall shown while paused.
+ */
+.ytp-endscreen-content,
+.ytp-ce-element,
+.ytp-cards-teaser,
+.ytp-cards-button,
+.ytp-pause-overlay {
+  display: none !important;
+}

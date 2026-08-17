@@ -7,7 +7,7 @@
     {
       "matches": ["*://www.youtube.com/*"],
       "css": ["src/clean.css"],
-      "js": ["src/router.js", "src/pages/home.js"],
+      "js": ["src/router.js", "src/pages/home.js", "src/pages/watch.js"],
       "run_at": "document_start",
       "all_frames": false
     }
