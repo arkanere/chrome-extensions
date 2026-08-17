@@ -1,10 +1,13 @@
-// YouTube Ad Skipper — click "Skip" as soon as it becomes clickable.
+// YouTube Ad Skipper — end a skippable ad the moment it can be skipped.
 //
-// YouTube renders the skip button well before the countdown ends: the element is
-// in the DOM the whole time, just hidden or disabled. So the job is not "wait for
-// the button to appear", it is "notice the moment it becomes clickable". A short
-// poll is the simplest thing that does that, and querySelector over a handful of
-// classes costs nothing.
+// The skip button is the trigger, not the mechanism: pressing it does nothing
+// (see the block comment above seekPastAd), so its appearance is only used as
+// the signal that this ad is allowed to end, and the ad is then seeked past.
+//
+// YouTube renders that button well before the countdown ends — it is in the DOM
+// the whole time, hidden. So the job is not "wait for the button to appear", it
+// is "notice the moment it becomes clickable". A short poll is the simplest
+// thing that does that, and querySelector over a few classes costs nothing.
 //
 // The class names have changed a few times over the years and old ones still show
 // up on some clients, so all the ones known to be in use are listed together.
@@ -15,9 +18,8 @@
 (() => {
   const DEBUG = true;
 
-  const POLL_MS = 200;     // how often we look for a button to click
-  const OBSERVE_MS = 25;   // how often the debug watcher looks. never clicks.
-  const ESCALATE_MS = 400; // how long a click stage gets before we try the next
+  const POLL_MS = 200;     // how often we look for a skippable ad, and retry
+  const OBSERVE_MS = 25;   // how often the debug watcher looks. never acts.
 
   const SKIP_SELECTORS = [
     '.ytp-skip-ad-button',        // current
@@ -67,82 +69,53 @@
     return '';
   }
 
-  // --- clicking -------------------------------------------------------------
+  // --- skipping -------------------------------------------------------------
   //
-  // el.click() alone does not skip the ad: the log showed the button staying put
-  // and being re-clicked every tick, forever. So clicking escalates. Each stage
-  // gets ESCALATE_MS to work before the next one is tried, and once the list runs
-  // out we stop rather than hammer a button that clearly is not listening.
+  // We do not press the skip button. Three ads' worth of logs say a scripted
+  // press is ignored: el.click() did nothing, and neither did a full pointer
+  // sequence dispatched at the real hit-test target, with the STUCK dump ruling
+  // out overlays and ghost elements. Events made by script carry
+  // isTrusted: false, and a content script cannot forge a trusted one. So both
+  // click stages were deleted rather than kept as dead fallbacks.
   //
-  // Stage 2 exists because YouTube's player generally drives off pointer events
-  // rather than the synthetic click event, and because the handler may sit on a
-  // child or an overlay rather than the element we matched — dispatching at the
-  // real hit-test target covers both.
+  // What works is moving the video element itself, which involves no handler at
+  // all. YouTube plays the content once the ad runs out.
+  //
+  // It is retried every tick rather than once, and that is the whole lesson of
+  // the pod: the first ad ignored a seek at +5.8s and played on to +13s, while
+  // the second obeyed instantly. A seek to a time outside video.seekable does
+  // nothing, and an ad is not always seekable to its end the moment the skip
+  // button appears. Retrying costs one assignment per tick and covers it.
+  //
+  // The danger is that the ad and the real video are the same <video> element,
+  // so a seek at the wrong moment fast-forwards what you actually wanted to
+  // watch. Two conditions must hold: the player is in its ad state, and a
+  // clickable skip button is on screen. skip() checks the first before anything
+  // else, and seekPastAd() checks it again — deliberate duplication, because
+  // this is the one operation here that can ruin a viewing.
 
-  function realClick(el) {
-    el.click();
-    return el;
+  function video() {
+    return document.querySelector('#movie_player video');
   }
 
-  function pointerClick(el) {
-    const box = el.getBoundingClientRect();
-    const x = box.left + box.width / 2;
-    const y = box.top + box.height / 2;
-
-    // Whatever is actually on top at that point is what a real cursor would hit.
-    const target = document.elementFromPoint(x, y) || el;
-
-    const base = {
-      bubbles: true, cancelable: true, composed: true, view: window,
-      clientX: x, clientY: y, screenX: x, screenY: y,
-      button: 0, detail: 1,
-      pointerId: 1, pointerType: 'mouse', isPrimary: true,
-    };
-
-    for (const type of ['pointerover', 'pointerenter', 'pointermove', 'mousemove',
-                        'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-      const down = type.endsWith('down') || type === 'pointermove' || type === 'mousemove';
-      const Ctor = type.startsWith('pointer') ? PointerEvent : MouseEvent;
-      target.dispatchEvent(new Ctor(type, { ...base, buttons: down ? 1 : 0 }));
-    }
-    return target;
-  }
-
-  // Seek the ad to its end instead of asking the player to skip it. This works
-  // because it never involves the player's event handlers at all — we move the
-  // video element itself, and YouTube moves on to the content when the ad runs out.
-  //
-  // The danger is obvious: the ad and the real video share one <video> element, so
-  // running this at the wrong moment fast-forwards the thing you actually wanted to
-  // watch. Two guards, and both must hold. The player must be in its ad state, and
-  // a clickable skip button must be on screen — which is already true, because
-  // stages only run when one was found. Nothing here is reachable outside an ad.
   function seekPastAd() {
     if (!adShowing()) return null;
 
-    const video = document.querySelector('#movie_player video');
-    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return null;
+    const v = video();
+    if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return null;
 
-    video.currentTime = video.duration;
-    return video;
+    v.currentTime = v.duration;
+
+    // Reading it straight back says whether the seek was taken. A target outside
+    // video.seekable is refused and currentTime stays put, which is exactly what
+    // the first ad of a pod does until it has buffered to the end.
+    return { video: v, accepted: v.currentTime >= v.duration - 0.5 };
   }
 
-  // Ordered by what the logs actually show. Both click stages were tried against
-  // real ads and neither ended one: the button stayed put and the ad played on,
-  // which is what a synthetic (isTrusted: false) event gets you. They are kept
-  // below the seek as cheap fallbacks in case a player build does listen.
-  const STAGES = [
-    { name: 'seek past ad', run: seekPastAd },
-    { name: 'el.click()', run: realClick },
-    { name: 'pointer events', run: pointerClick },
-  ];
-
-  let attempt = null; // { stage, at } for the button currently on screen
+  let attempt = null; // the seek run against the button currently on screen
 
   function skip() {
-    // Nothing below should ever run outside an ad. The seek stage makes this a
-    // safety gate rather than a tidiness one, and a stale skip button does
-    // outlive the ad state occasionally.
+    // Nothing below runs outside an ad. This is a safety gate, not tidiness.
     if (!adShowing()) {
       attempt = null;
       return;
@@ -150,33 +123,20 @@
 
     const found = findButton();
 
-    // No clickable button: either the countdown is still running, or there is
-    // nothing to press.
-    // Either way the previous attempt is over — the next ad starts fresh.
+    // No clickable button: the countdown is still running, or this ad has no
+    // skip at all. Either way the previous run is over and the next starts fresh.
     if (!found || !found.clickable) {
       attempt = null;
       return;
     }
 
     const t = performance.now();
+    if (!attempt) attempt = { first: t, tries: 0, moaned: false };
+    attempt.tries += 1;
 
-    if (!attempt) {
-      attempt = { stage: 0, at: t };
-    } else if (t - attempt.at < ESCALATE_MS) {
-      return; // give the stage we already tried time to take effect
-    } else if (attempt.stage + 1 >= STAGES.length) {
-      if (DEBUG && !attempt.gaveUp) {
-        attempt.gaveUp = true;
-        onStuck(found);
-      }
-      return; // out of ideas. stop hammering.
-    } else {
-      attempt = { stage: attempt.stage + 1, at: t };
-    }
+    const sought = seekPastAd();
 
-    const stage = STAGES[attempt.stage];
-    const target = stage.run(found.el);
-    if (DEBUG) onClick(found, stage.name, target);
+    if (DEBUG) onSeek(attempt, sought, t);
   }
 
   setInterval(skip, POLL_MS);
@@ -186,13 +146,13 @@
   // Everything below is observation only, and runs at OBSERVE_MS rather than
   // POLL_MS on purpose. If the watcher ran at the same 200ms as the clicker it
   // could never see the cost of the poll — every button would look like it
-  // became clickable on the same tick we clicked it. Watching 8x faster means
-  // the "clickable -> CLICK" number in the log is the real latency our poll
+  // became clickable on the same tick we acted on it. Watching 8x faster means
+  // the "clickable -> SEEK" number in the log is the real latency our poll
   // interval is responsible for, which is the number worth tuning against.
   //
   // Timings are relative to the start of the current segment. A segment is one
   // ad: either a fresh `.ad-showing` span, or the next ad in a pod, which we
-  // notice by the badge text changing or by our own click not ending the break.
+  // notice by the badge text changing or by our own seek not ending the break.
 
   let seg = null;
   let count = 0; // ads seen in the current break. survives endSeg, unlike seg.
@@ -218,63 +178,72 @@
       n: count,
       badge: badge(),
       inDom: null,
-      ready: null,     // first moment the button was clickable
-      clicked: null,   // first click only. later stages do not overwrite it.
-      described: false,
+      ready: null,   // first moment the button was clickable
+      seeked: null,   // first seek attempt. retries do not overwrite it.
+      accepted: null, // first seek the video actually took. null means refused.
+      guarded: false,
     };
     console.log(`[yt-skip] ad start  #${seg.n}${seg.badge ? `  "${seg.badge}"` : ''}${reason ? `  (${reason})` : ''}`);
   }
 
   function endSeg() {
     if (!seg) return;
-    if (seg.stuck) {
-      line(now(), 'ad ended on its own — nothing we did skipped it');
-    } else if (seg.clicked) {
-      line(now(), `skipped — ad gone ${Math.round(now() - seg.clicked)}ms after click`);
+    if (seg.accepted !== null) {
+      line(now(), `skipped — ad gone ${Math.round(now() - seg.accepted)}ms after the seek landed`);
+    } else if (seg.seeked !== null) {
+      line(now(), 'ad played out — every seek was refused, nothing we did skipped it');
     } else if (seg.ready) {
-      line(now(), 'ad ended, button was clickable but we never clicked — BUG');
+      line(now(), 'ad ended, button was clickable but we never seeked — BUG');
     } else {
       line(now(), `ad ended with no skip button — unskippable (${Math.round((now() - seg.start) / 1000)}s watched)`);
     }
     seg = null;
   }
 
-  function onClick(found, stageName, target) {
+  function onSeek(attempt, sought, t) {
     if (!seg) return;
-    const t = now();
-    if (seg.clicked === null) {
-      // Only the first click has a meaningful latency. Later ones are retries,
-      // and timing them against `ready` just produces a number that grows.
-      seg.clicked = t;
+
+    if (seg.seeked === null) {
+      seg.seeked = t;
       const latency = seg.ready === null ? null : Math.round(t - seg.ready);
-      line(t, `SKIP via ${stageName}${latency === null ? '' : `  (latency ${latency}ms, poll is ${POLL_MS}ms)`}`);
-    } else {
-      line(t, `RETRY via ${stageName} — previous stage did not end the ad`);
+      line(t, `SEEK past ad${latency === null ? '' : `  (latency ${latency}ms, poll is ${POLL_MS}ms)`}`);
     }
-    if (target === null) {
-      line(t, '  ...stage did nothing, its guard did not hold');
-    } else if (target !== found.el) {
-      line(t, `  ...acted on ${describe(target)}, not the matched button`);
+
+    if (sought === null) {
+      if (!seg.guarded) {
+        seg.guarded = true;
+        line(t, '  ...seek did nothing, its guard did not hold');
+      }
+      return;
+    }
+
+    // The moment a seek is actually taken. Everything before this was refused.
+    if (sought.accepted && seg.accepted === null) {
+      seg.accepted = t;
+      if (attempt.tries > 1) {
+        line(t, `seek accepted on try ${attempt.tries}, ${Math.round(t - attempt.first)}ms after the first`);
+      }
+      return;
+    }
+
+    // Still being refused a second in. Print what the video says about itself
+    // once, then let the retries get on with it quietly.
+    if (!sought.accepted && !attempt.moaned && t - attempt.first > 1000) {
+      attempt.moaned = true;
+      const v = sought.video;
+      line(t, `seek refused ${attempt.tries} times — retrying every ${POLL_MS}ms`);
+      console.log(`[yt-skip]     currentTime ${v.currentTime.toFixed(2)} of duration ${v.duration.toFixed(2)}`);
+      console.log(`[yt-skip]     seekable: ${ranges(v.seekable)}  buffered: ${ranges(v.buffered)}`);
     }
   }
 
-  // Printed once per ad, the moment the button is clickable. This is the raw
-  // material for deciding what the button actually is: which selector matched,
-  // whether more than one element matched, and what a real cursor would hit at
-  // its centre — if that is not the button or a child of it, something is on top.
-  function onStuck(found) {
-    if (seg) seg.stuck = true;
-    line(now(), 'STUCK — every stage tried, ad still showing. structure follows:');
-    for (const sel of SKIP_SELECTORS) {
-      const all = document.querySelectorAll(sel);
-      if (all.length) console.log(`[yt-skip]     ${sel} matched ${all.length}`);
+  function ranges(list) {
+    if (!list || !list.length) return 'none';
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) {
+      out.push(`${list.start(i).toFixed(2)}-${list.end(i).toFixed(2)}`);
     }
-    const box = found.el.getBoundingClientRect();
-    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-    console.log(`[yt-skip]     matched: ${describe(found.el)}`);
-    console.log(`[yt-skip]     hit test at centre: ${hit ? describe(hit) : 'nothing'}` +
-                `${hit && found.el.contains(hit) ? ' (inside the button — good)' : ' (NOT the button — overlay?)'}`);
-    console.log(`[yt-skip]     html: ${found.el.outerHTML.slice(0, 300)}`);
+    return out.join(', ');
   }
 
   function describe(el) {
@@ -297,15 +266,15 @@
     if (!seg) {
       startSeg('');
     } else {
-      // Next ad in a pod: the badge moved on, or our click cleared one ad but
+      // Next ad in a pod: the badge moved on, or our seek cleared one ad but
       // the break is still running. Either way the old segment is done timing.
       const current = badge();
       if (current && current !== seg.badge) {
         endSeg();
         startSeg('next in pod');
-      } else if (seg.clicked && !found && now() - seg.clicked > 500) {
+      } else if (seg.seeked !== null && !found && now() - seg.seeked > 500) {
         endSeg();
-        startSeg('click cleared an ad, break continues');
+        startSeg('seek cleared an ad, break continues');
       }
     }
 
