@@ -21,7 +21,19 @@
   gap: 10px;
   padding-bottom: 8px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--yt-spec-10-percent-layer, rgba(128, 128, 128, 0.2));
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+
+  /*
+   * Set explicitly, never inherited. #contents computes to black text, so an
+   * inherited colour is invisible on dark theme — which is what happened the
+   * first time this was written against --yt-spec-* variables, and again when
+   * the heading became a direct child of #contents.
+   */
+  color: #0f0f0f;
+}
+
+html[dark] .myyt-group-head {
+  color: #f1f1f1;
 }
 
 /*
