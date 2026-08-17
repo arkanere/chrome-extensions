@@ -30,6 +30,7 @@ my-youtube/
   manifest.json
   src/
     clean.css            static hide rules, injected at document_start
+    feed.css             layout for the rebuilt subscription feed
     router.js            watches yt-navigate-finish, dispatches by path
     pages/
       home.js            redirect / -> /feed/subscriptions
@@ -79,14 +80,26 @@ real viewport change — to make it measure again.
 
 This is the real work, and the only part that is not a skin.
 
-1. Hide YouTube's own grid with CSS and mount our own container in its place.
+We **rearrange** YouTube's grid rather than replacing it. The cards stay
+YouTube's own elements, moved into per-channel sections. Two reasons:
+
+1. Lazy loading keeps working. YouTube loads more videos when a sentinel at the
+   end of the grid scrolls into view. A hidden grid never fires it, and the
+   feed would silently stop at the first batch.
+2. Thumbnails, hover previews, menus and navigation keep working for free.
+
+Steps:
+
+1. Find the grid's `#contents`, waiting for it if the page is still building.
 2. For each card in the DOM, `extract.js` pulls out:
    `{ videoId, title, channel, channelId, thumbnail, duration, publishedText,
       isShort, isLive, watchedFraction }`
 3. Filter: drop Shorts, drop live, drop anything YouTube already shows as
    mostly watched.
-4. Group by channel, newest first within each group.
-5. Render our own grid. Seen videos are dimmed and sink to the bottom.
+4. Move each card into its channel's section, creating the section on first
+   sight of that channel. New sections are inserted before the continuation
+   sentinel, which must stay last or YouTube stops loading.
+5. Later: seen videos are dimmed and sink to the bottom.
 
 ### Observe, don't drive
 
@@ -94,7 +107,7 @@ YouTube lazy-loads the feed: it renders roughly the first 30-40 videos and
 fetches more only as you scroll. We do **not** scroll the page ourselves to
 force the rest out of it.
 
-Instead a `MutationObserver` watches YouTube's (hidden) grid. When you scroll
+Instead a `MutationObserver` watches the grid's `#contents`. When you scroll
 normally and YouTube appends more cards, we extract and fold them into our
 layout as they arrive. The feed is interactive immediately instead of stalling
 while a script pumps the scrollbar.

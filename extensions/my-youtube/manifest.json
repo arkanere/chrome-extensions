@@ -6,8 +6,14 @@
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*"],
-      "css": ["src/clean.css"],
-      "js": ["src/router.js", "src/pages/home.js", "src/pages/watch.js"],
+      "css": ["src/clean.css", "src/feed.css"],
+      "js": [
+        "src/router.js",
+        "src/lib/extract.js",
+        "src/pages/home.js",
+        "src/pages/watch.js",
+        "src/pages/subs.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }

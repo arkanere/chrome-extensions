@@ -1,0 +1,53 @@
+/*
+ * Layout for the rebuilt subscription feed.
+ *
+ * Unlike clean.css these are not hide rules, they style the channel sections
+ * that subs.js builds. Colours come from YouTube's own custom properties so
+ * the feed follows light and dark theme without us tracking either.
+ */
+
+/* YouTube's #contents is a CSS grid, so a section must span every column. */
+.myyt-group {
+  grid-column: 1 / -1;
+  margin: 0 0 32px;
+}
+
+.myyt-group__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--yt-spec-10-percent-layer, rgba(128, 128, 128, 0.2));
+}
+
+.myyt-group__name {
+  font-family: "Roboto", "Arial", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--yt-spec-text-primary, #0f0f0f);
+}
+
+.myyt-group__count {
+  font-family: "Roboto", "Arial", sans-serif;
+  font-size: 12px;
+  color: var(--yt-spec-text-secondary, #606060);
+}
+
+.myyt-group__items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px 16px;
+}
+
+/* YouTube sizes cards for its own grid; inside ours they fill their cell. */
+.myyt-group__items ytd-rich-item-renderer {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+/* Filtered out by subs.js: Shorts, live, already watched. */
+.myyt-hidden {
+  display: none !important;
+}
