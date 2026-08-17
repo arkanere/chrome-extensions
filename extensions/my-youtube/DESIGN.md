@@ -95,13 +95,22 @@ real viewport change — to make it measure again.
 
 This is the real work, and the only part that is not a skin.
 
-We **rearrange** YouTube's grid rather than replacing it. The cards stay
-YouTube's own elements, moved into per-channel sections. Two reasons:
+We **rearrange** YouTube's grid in place rather than replacing it. Cards stay
+YouTube's own elements and stay **direct children of `#contents`**. We only
+insert heading elements between them and reorder them behind their heading.
 
 1. Lazy loading keeps working. YouTube loads more videos when a sentinel at the
    end of the grid scrolls into view. A hidden grid never fires it, and the
    feed would silently stop at the first batch.
 2. Thumbnails, hover previews, menus and navigation keep working for free.
+3. **Never take cards out of `#contents`.** YouTube keeps requesting more
+   videos while it believes the grid is underfilled. An earlier version moved
+   cards into nested containers of our own; the grid saw its item list
+   emptying and loaded continuation after continuation, 11,000 videos deep,
+   until the tab was unusable.
+
+As a safety net, the feed stops and says so in the bar if it ever places more
+than 600 videos, hiding the sentinel so YouTube stops loading.
 
 Steps:
 
@@ -114,16 +123,18 @@ Steps:
 4. Move each card into its channel's section, creating the section on first
    sight of that channel. New sections are inserted before the continuation
    sentinel, which must stay last or YouTube stops loading.
-5. Seen videos are dimmed and sink below the unseen ones in their group.
+5. Seen videos are dimmed in place. They are not sunk to the bottom of their
+   group: that needs cards moved around inside a container of ours, which is
+   exactly what caused the runaway load above. Dimming carries the signal.
 
 **Seen state.** Stored in `chrome.storage.local` as `videoId -> timestamp`,
 pruned to the last 30 days on load. A video is marked seen when you click it,
 and each channel heading has a "mark all seen" button.
 
-Clicking a card records it but deliberately does not move it — the card would
-jump out from under the pointer mid-click. The change shows up next time the
-feed is built. "Mark all seen" moves cards immediately, since that is the
-point of pressing it.
+Clicking a card records it but deliberately does not dim it yet — the card
+would change under the pointer mid-click. It shows up dimmed next time the
+feed is built. "Mark all seen" dims immediately, since that is the point of
+pressing it.
 
 The heading count shows unseen videos ("3 new"), not the total.
 

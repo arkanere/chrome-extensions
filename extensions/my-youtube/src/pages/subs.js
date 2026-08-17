@@ -1,13 +1,15 @@
 /*
  * The rebuilt subscription feed.
  *
- * We do not replace YouTube's grid, we rearrange it. The cards stay YouTube's
- * own elements, moved into per-channel sections. Two reasons:
+ * We do not replace YouTube's grid, we rearrange it in place. Cards stay
+ * YouTube's own elements AND stay direct children of #contents. We only insert
+ * heading elements between them and reorder them behind their heading.
  *
- *  1. Lazy loading keeps working. YouTube loads more videos when a sentinel at
- *     the end of the grid scrolls into view. A hidden grid never fires it, and
- *     the feed would silently stop at the first batch.
- *  2. Thumbnails, hover previews, menus and navigation keep working for free.
+ * Staying direct children is not a detail. YouTube keeps requesting more
+ * videos while it believes #contents is underfilled. An earlier version moved
+ * cards into nested containers of our own, so the grid saw its item list
+ * emptying and loaded continuation after continuation — 11,000 videos deep,
+ * with the page unusable. Never take cards out of #contents.
  *
  * Observe, don't drive: we never scroll the page ourselves. A MutationObserver
  * folds in cards as YouTube appends them during your own scrolling.
@@ -15,9 +17,18 @@
 
 const WATCHED_ENOUGH = 0.9;
 
+/*
+ * Safety net for the failure above. If cards ever arrive without end again,
+ * stop and say so rather than letting the tab grind to a halt.
+ */
+const MAX_CARDS = 600;
+
 let observer = null;
+let contents = null;
 let groups = null; /* channelId -> group */
 let unparsed = 0;
+let placed = 0;
+let stopped = false;
 
 function waitFor(selector, onFound) {
   const found = document.querySelector(selector);
@@ -36,28 +47,21 @@ function waitFor(selector, onFound) {
 }
 
 function updateCount(group) {
-  const unseen = group.items.children.length;
+  const unseen = group.cards.filter((c) => !c.classList.contains("myyt-seen")).length;
   group.count.textContent = unseen ? unseen + " new" : "all seen";
   group.markAll.hidden = unseen === 0;
 }
 
 function markGroupSeen(group) {
-  const cards = [...group.items.children];
-  MyYT.seen.mark(cards.map((c) => c.dataset.myytId).filter(Boolean));
-
-  for (const card of cards) {
-    card.classList.add("myyt-seen");
-    group.seenItems.appendChild(card);
-  }
+  const fresh = group.cards.filter((c) => !c.classList.contains("myyt-seen"));
+  MyYT.seen.mark(fresh.map((c) => c.dataset.myytId).filter(Boolean));
+  for (const card of fresh) card.classList.add("myyt-seen");
   updateCount(group);
 }
 
-function makeGroup(video, contents) {
-  const section = document.createElement("div");
-  section.className = "myyt-group";
-
+function makeGroup(video) {
   const head = document.createElement("div");
-  head.className = "myyt-group__head";
+  head.className = "myyt-group-head";
 
   const name = document.createElement("span");
   name.className = "myyt-group__name";
@@ -72,31 +76,21 @@ function makeGroup(video, contents) {
 
   head.append(name, count, markAll);
 
-  /* Unseen first, already-seen dimmed underneath. */
-  const items = document.createElement("div");
-  items.className = "myyt-group__items";
-
-  const seenItems = document.createElement("div");
-  seenItems.className = "myyt-group__items myyt-group__items--seen";
-
-  section.append(head, items, seenItems);
-
   /*
    * Group order is fixed the first time a channel appears and groups only
-   * ever grow. Without this the layout would reshuffle under you as more
-   * cards load in.
+   * ever grow, so the layout does not reshuffle as more cards load.
    *
    * The continuation sentinel must stay last or YouTube stops loading.
    */
   const sentinel = contents.querySelector("ytd-continuation-item-renderer");
-  contents.insertBefore(section, sentinel);
+  contents.insertBefore(head, sentinel);
 
-  const group = { section, items, seenItems, count, markAll };
+  const group = { head, count, markAll, tail: head, cards: [] };
   markAll.addEventListener("click", () => markGroupSeen(group));
   return group;
 }
 
-function processCard(card, contents) {
+function processCard(card) {
   if (card.dataset.myytSeen) return;
   card.dataset.myytSeen = "1";
 
@@ -114,24 +108,40 @@ function processCard(card, contents) {
 
   let group = groups.get(video.channelId);
   if (!group) {
-    group = makeGroup(video, contents);
+    group = makeGroup(video);
     groups.set(video.channelId, group);
   }
 
   card.dataset.myytId = video.videoId;
+  if (MyYT.seen.has(video.videoId)) card.classList.add("myyt-seen");
 
-  if (MyYT.seen.has(video.videoId)) {
-    card.classList.add("myyt-seen");
-    group.seenItems.appendChild(card);
-  } else {
-    group.items.appendChild(card);
-  }
+  /* Move the card in behind its heading, still a direct child of #contents. */
+  contents.insertBefore(card, group.tail.nextSibling);
+  group.tail = card;
+  group.cards.push(card);
+  placed++;
+
   updateCount(group);
 }
 
-function scan(contents) {
+/* Stop YouTube loading any more by taking the sentinel out of view. */
+function halt(reason) {
+  stopped = true;
+  if (observer) observer.disconnect();
+  const sentinel = contents.querySelector("ytd-continuation-item-renderer");
+  if (sentinel) sentinel.classList.add("myyt-hidden");
+  MyYT.bar.say(reason, true);
+}
+
+function scan() {
+  if (stopped) return;
+
   for (const card of contents.querySelectorAll("ytd-rich-item-renderer")) {
-    processCard(card, contents);
+    processCard(card);
+  }
+
+  if (placed > MAX_CARDS) {
+    return halt("stopped at " + placed + " videos — the feed kept loading");
   }
 
   if (unparsed) {
@@ -145,16 +155,18 @@ function scan(contents) {
 
   /* Resting state: what the feed currently holds. */
   let unseen = 0;
-  for (const group of groups.values()) unseen += group.items.children.length;
+  for (const group of groups.values()) {
+    unseen += group.cards.filter((c) => !c.classList.contains("myyt-seen")).length;
+  }
   MyYT.bar.say(groups.size + " channels · " + unseen + " new");
 }
 
 /*
- * Clicking a card records it as seen but deliberately does not move it. The
- * card would jump out from under the pointer mid-click; the change shows up
- * next time the feed is built instead.
+ * Clicking a card records it as seen but deliberately does not dim it yet. The
+ * card would change under the pointer mid-click; it shows up dimmed next time
+ * the feed is built instead.
  */
-function watchClicks(contents) {
+function watchClicks() {
   contents.addEventListener("click", (e) => {
     const card = e.target.closest("ytd-rich-item-renderer");
     if (card && card.dataset.myytId) MyYT.seen.mark([card.dataset.myytId]);
@@ -168,14 +180,18 @@ MyYT.route(
     if (observer) observer.disconnect();
     groups = new Map();
     unparsed = 0;
+    placed = 0;
+    stopped = false;
 
-    waitFor("ytd-browse[page-subtype='subscriptions'] ytd-rich-grid-renderer #contents", (contents) => {
+    waitFor("ytd-browse[page-subtype='subscriptions'] ytd-rich-grid-renderer #contents", (el) => {
+      contents = el;
+
       /* Seen state must be in memory before the first card is placed. */
       MyYT.seen.load().then(() => {
-        scan(contents);
-        watchClicks(contents);
+        scan();
+        watchClicks();
 
-        observer = new MutationObserver(() => scan(contents));
+        observer = new MutationObserver(() => scan());
         observer.observe(contents, { childList: true });
       });
     });

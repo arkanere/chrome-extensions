@@ -7,18 +7,15 @@
  */
 
 /*
- * A section must take a full row to itself. YouTube's #contents is a grid in
- * some versions and a flex row in others, so claim the whole width in both
- * ways rather than betting on one.
+ * A heading takes a full row to itself, which also forces the cards after it
+ * onto the next line. YouTube's #contents is a grid in some versions and a
+ * flex row in others, so claim the whole width in both ways.
  */
-.myyt-group {
+.myyt-group-head {
   grid-column: 1 / -1;
   flex: 0 0 100%;
   width: 100%;
-  margin: 0 0 32px;
-}
-
-.myyt-group__head {
+  margin: 24px 0 4px;
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -47,25 +44,12 @@
 }
 
 /*
- * Wrap rather than grid. YouTube sets its own width on the lockup inside each
- * card, so forcing cards into grid cells of our choosing just made the two
- * disagree. Let the cards keep their natural size and only lay them out.
+ * Cards are left alone entirely: YouTube's own grid lays them out, at its own
+ * width, and they stay direct children of #contents so the grid keeps counting
+ * them. We only insert headings between them.
  */
-.myyt-group__items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
 
-.myyt-group__items ytd-rich-item-renderer {
-  margin: 0 !important;
-}
-
-/* Already seen: dimmed, sunk below the unseen ones, full colour on hover. */
-.myyt-group__items--seen {
-  margin-top: 16px;
-}
-
+/* Already seen: dimmed in place, full colour on hover. */
 .myyt-seen {
   opacity: 0.4;
   transition: opacity 0.15s;
