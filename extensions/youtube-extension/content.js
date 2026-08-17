@@ -108,7 +108,31 @@
     return target;
   }
 
+  // Seek the ad to its end instead of asking the player to skip it. This works
+  // because it never involves the player's event handlers at all — we move the
+  // video element itself, and YouTube moves on to the content when the ad runs out.
+  //
+  // The danger is obvious: the ad and the real video share one <video> element, so
+  // running this at the wrong moment fast-forwards the thing you actually wanted to
+  // watch. Two guards, and both must hold. The player must be in its ad state, and
+  // a clickable skip button must be on screen — which is already true, because
+  // stages only run when one was found. Nothing here is reachable outside an ad.
+  function seekPastAd() {
+    if (!adShowing()) return null;
+
+    const video = document.querySelector('#movie_player video');
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return null;
+
+    video.currentTime = video.duration;
+    return video;
+  }
+
+  // Ordered by what the logs actually show. Both click stages were tried against
+  // real ads and neither ended one: the button stayed put and the ad played on,
+  // which is what a synthetic (isTrusted: false) event gets you. They are kept
+  // below the seek as cheap fallbacks in case a player build does listen.
   const STAGES = [
+    { name: 'seek past ad', run: seekPastAd },
     { name: 'el.click()', run: realClick },
     { name: 'pointer events', run: pointerClick },
   ];
@@ -116,9 +140,18 @@
   let attempt = null; // { stage, at } for the button currently on screen
 
   function skip() {
+    // Nothing below should ever run outside an ad. The seek stage makes this a
+    // safety gate rather than a tidiness one, and a stale skip button does
+    // outlive the ad state occasionally.
+    if (!adShowing()) {
+      attempt = null;
+      return;
+    }
+
     const found = findButton();
 
-    // No clickable button: either no ad, or the countdown is still running.
+    // No clickable button: either the countdown is still running, or there is
+    // nothing to press.
     // Either way the previous attempt is over — the next ad starts fresh.
     if (!found || !found.clickable) {
       attempt = null;
@@ -170,8 +203,11 @@
     return performance.now();
   }
 
+  // `seg` can legitimately be null here: a stale skip button can outlive the ad
+  // state by a tick or two, and the clicker will report on it. Without the null
+  // check this threw on every poll.
   function line(at, text) {
-    const ms = at === null ? '' : `+${Math.round(at - seg.start)}ms`;
+    const ms = at === null || !seg ? '' : `+${Math.round(at - seg.start)}ms`;
     console.log(`[yt-skip] ${ms.padStart(8)}  ${text}`);
   }
 
@@ -211,12 +247,14 @@
       // and timing them against `ready` just produces a number that grows.
       seg.clicked = t;
       const latency = seg.ready === null ? null : Math.round(t - seg.ready);
-      line(t, `CLICK via ${stageName}${latency === null ? '' : `  (latency ${latency}ms, poll is ${POLL_MS}ms)`}`);
+      line(t, `SKIP via ${stageName}${latency === null ? '' : `  (latency ${latency}ms, poll is ${POLL_MS}ms)`}`);
     } else {
       line(t, `RETRY via ${stageName} — previous stage did not end the ad`);
     }
-    if (target !== found.el) {
-      line(t, `  ...dispatched at ${describe(target)}, not the matched element`);
+    if (target === null) {
+      line(t, '  ...stage did nothing, its guard did not hold');
+    } else if (target !== found.el) {
+      line(t, `  ...acted on ${describe(target)}, not the matched button`);
     }
   }
 
@@ -240,7 +278,7 @@
   }
 
   function describe(el) {
-    if (!el) return 'null';
+    if (!el || !el.tagName) return 'nothing';
     const cls = typeof el.className === 'string' ? el.className.trim().split(/\s+/).join('.') : '';
     return `<${el.tagName.toLowerCase()}${cls ? `.${cls}` : ''}>`;
   }

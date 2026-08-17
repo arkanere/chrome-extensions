@@ -33,28 +33,59 @@ enough that it doesn't register next to what YouTube's own page does.
 anything `display:none`, which is how the button spends the countdown), and the
 box has a non-zero size.
 
-## Clicking is a ladder, not a click
+## It does not press the button, because pressing it does not work
 
-`el.click()` on its own **does not skip the ad**. The log caught this on the first
-real run: the button went clickable, we clicked, and then we clicked again every
-200ms forever while the ad played on. YouTube ignores the synthetic click event.
+This started out clicking the skip button. That does not work, and the logs are
+what proved it. Two rounds against real ads:
 
-So `skip()` escalates. Each stage gets `ESCALATE_MS` (400ms) to work, and if the
-list runs out we stop rather than hammer a button that is not listening:
+1. `el.click()` — button stayed put, ad played on, and we re-clicked every 200ms
+   forever
+2. a full pointer event sequence (`pointerover → pointerdown → mousedown →
+   pointerup → mouseup → click`), dispatched at whatever `elementFromPoint`
+   reported at the button's centre — same result
 
-1. `el.click()` — kept because it is free and works on some player versions
-2. **pointer events** — a full `pointerover → pointerdown → mousedown → pointerup →
-   mouseup → click` sequence, dispatched at whatever `elementFromPoint` says is
-   really on top at the button's centre. That covers both "the player wants pointer
-   events" and "the handler is on a child or an overlay, not the element we matched"
+The `STUCK` dump ruled out the boring explanations. Exactly one element matched, and
+the hit test at its centre landed on the button itself, so there was no overlay
+stealing the press and no ghost element being matched:
 
-The log says which stage did it (`CLICK via …` / `RETRY via …`). Once real data
-shows one stage always wins, delete the other — the ladder is here to find that out,
-not to stay forever.
+```
+<button class="ytp-skip-ad-button" id="skip-button:2">
+  <div class="ytp-skip-ad-button__text">Skip</div>
+```
 
-If both stages fail, one `STUCK` block prints the button's tag, class, match count,
-outer HTML, and the hit-test result at its centre. That is the evidence needed to
-work out what to try next, and it prints once per ad rather than every tick.
+What is left is `isTrusted`. Events made by script carry `isTrusted: false`, and a
+content script cannot forge a trusted one — only `chrome.debugger` can, which needs
+a permission that puts a warning banner across the browser. So pressing the button
+is a dead end, not a bug waiting to be fixed.
+
+**What works instead: seek the ad to its end.** `video.currentTime = video.duration`
+touches no event handler at all — it moves the video element, and YouTube moves on
+to the content when the ad runs out.
+
+The stages are ordered by what the logs showed, seek first:
+
+| Stage | Status |
+| --- | --- |
+| `seek past ad` | the one that works |
+| `el.click()` | kept as a cheap fallback in case a player build does listen |
+| `pointer events` | same |
+
+Each stage gets `ESCALATE_MS` (400ms) before the next is tried, and when the list
+runs out we stop rather than hammer a button that is not listening. The log names
+the stage that did it (`SKIP via …`), so if the fallbacks never win they can be
+deleted.
+
+### The guard that matters
+
+The ad and the real video are **the same `<video>` element**. A seek at the wrong
+moment fast-forwards the thing you actually wanted to watch, so two conditions must
+both hold before it runs: the player must be in its `ad-showing` state, and a
+clickable skip button must be on screen. `skip()` returns early when no ad is
+showing, and `seekPastAd()` re-checks it. That duplication is deliberate — it is the
+one operation here that can ruin a viewing.
+
+Both were tested: a simulated stale skip button with no ad running leaves the real
+video's `currentTime` untouched.
 
 ## Logging — currently on
 
