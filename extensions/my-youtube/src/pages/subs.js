@@ -16,7 +16,7 @@
 const WATCHED_ENOUGH = 0.9;
 
 let observer = null;
-let groups = null; /* channelId -> { section, items } */
+let groups = null; /* channelId -> group */
 let unparsed = 0;
 
 function waitFor(selector, onFound) {
@@ -35,6 +35,23 @@ function waitFor(selector, onFound) {
   setTimeout(() => watcher.disconnect(), 15000);
 }
 
+function updateCount(group) {
+  const unseen = group.items.children.length;
+  group.count.textContent = unseen ? unseen + " new" : "all seen";
+  group.markAll.hidden = unseen === 0;
+}
+
+function markGroupSeen(group) {
+  const cards = [...group.items.children];
+  MyYT.seen.mark(cards.map((c) => c.dataset.myytId).filter(Boolean));
+
+  for (const card of cards) {
+    card.classList.add("myyt-seen");
+    group.seenItems.appendChild(card);
+  }
+  updateCount(group);
+}
+
 function makeGroup(video, contents) {
   const section = document.createElement("div");
   section.className = "myyt-group";
@@ -49,12 +66,20 @@ function makeGroup(video, contents) {
   const count = document.createElement("span");
   count.className = "myyt-group__count";
 
-  head.append(name, count);
+  const markAll = document.createElement("button");
+  markAll.className = "myyt-group__mark";
+  markAll.textContent = "mark all seen";
 
+  head.append(name, count, markAll);
+
+  /* Unseen first, already-seen dimmed underneath. */
   const items = document.createElement("div");
   items.className = "myyt-group__items";
 
-  section.append(head, items);
+  const seenItems = document.createElement("div");
+  seenItems.className = "myyt-group__items myyt-group__items--seen";
+
+  section.append(head, items, seenItems);
 
   /*
    * Group order is fixed the first time a channel appears and groups only
@@ -66,7 +91,9 @@ function makeGroup(video, contents) {
   const sentinel = contents.querySelector("ytd-continuation-item-renderer");
   contents.insertBefore(section, sentinel);
 
-  return { section, items, count, n: 0 };
+  const group = { section, items, seenItems, count, markAll };
+  markAll.addEventListener("click", () => markGroupSeen(group));
+  return group;
 }
 
 function processCard(card, contents) {
@@ -91,25 +118,40 @@ function processCard(card, contents) {
     groups.set(video.channelId, group);
   }
 
-  group.items.appendChild(card);
-  group.n++;
-  group.count.textContent = group.n === 1 ? "1 video" : group.n + " videos";
+  card.dataset.myytId = video.videoId;
+
+  if (MyYT.seen.has(video.videoId)) {
+    card.classList.add("myyt-seen");
+    group.seenItems.appendChild(card);
+  } else {
+    group.items.appendChild(card);
+  }
+  updateCount(group);
 }
 
 function scan(contents) {
-  const cards = contents.querySelectorAll("ytd-rich-item-renderer");
-  for (const card of cards) processCard(card, contents);
+  for (const card of contents.querySelectorAll("ytd-rich-item-renderer")) {
+    processCard(card, contents);
+  }
 
   if (unparsed) {
     console.warn(
-      "[my-youtube] could not parse " +
-        unparsed +
-        " cards (extract v" +
-        MyYT.EXTRACT_VERSION +
-        ")"
+      "[my-youtube] could not parse " + unparsed + " cards (extract v" + MyYT.EXTRACT_VERSION + ")"
     );
     unparsed = 0;
   }
+}
+
+/*
+ * Clicking a card records it as seen but deliberately does not move it. The
+ * card would jump out from under the pointer mid-click; the change shows up
+ * next time the feed is built instead.
+ */
+function watchClicks(contents) {
+  contents.addEventListener("click", (e) => {
+    const card = e.target.closest("ytd-rich-item-renderer");
+    if (card && card.dataset.myytId) MyYT.seen.mark([card.dataset.myytId]);
+  });
 }
 
 MyYT.route(
@@ -121,10 +163,14 @@ MyYT.route(
     unparsed = 0;
 
     waitFor("ytd-browse[page-subtype='subscriptions'] ytd-rich-grid-renderer #contents", (contents) => {
-      scan(contents);
+      /* Seen state must be in memory before the first card is placed. */
+      MyYT.seen.load().then(() => {
+        scan(contents);
+        watchClicks(contents);
 
-      observer = new MutationObserver(() => scan(contents));
-      observer.observe(contents, { childList: true });
+        observer = new MutationObserver(() => scan(contents));
+        observer.observe(contents, { childList: true });
+      });
     });
   }
 );

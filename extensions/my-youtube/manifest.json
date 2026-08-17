@@ -3,6 +3,7 @@
   "name": "my-youtube",
   "version": "0.1.0",
   "description": "A quiet, subscription-first YouTube.",
+  "permissions": ["storage"],
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*"],
@@ -10,6 +11,7 @@
       "js": [
         "src/router.js",
         "src/lib/extract.js",
+        "src/lib/seen.js",
         "src/pages/home.js",
         "src/pages/watch.js",
         "src/pages/subs.js"

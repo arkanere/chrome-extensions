@@ -99,7 +99,18 @@ Steps:
 4. Move each card into its channel's section, creating the section on first
    sight of that channel. New sections are inserted before the continuation
    sentinel, which must stay last or YouTube stops loading.
-5. Later: seen videos are dimmed and sink to the bottom.
+5. Seen videos are dimmed and sink below the unseen ones in their group.
+
+**Seen state.** Stored in `chrome.storage.local` as `videoId -> timestamp`,
+pruned to the last 30 days on load. A video is marked seen when you click it,
+and each channel heading has a "mark all seen" button.
+
+Clicking a card records it but deliberately does not move it — the card would
+jump out from under the pointer mid-click. The change shows up next time the
+feed is built. "Mark all seen" moves cards immediately, since that is the
+point of pressing it.
+
+The heading count shows unseen videos ("3 new"), not the total.
 
 ### Observe, don't drive
 

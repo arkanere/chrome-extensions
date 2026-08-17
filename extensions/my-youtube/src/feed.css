@@ -61,6 +61,37 @@
   margin: 0 !important;
 }
 
+/* Already seen: dimmed, sunk below the unseen ones, full colour on hover. */
+.myyt-group__items--seen {
+  margin-top: 16px;
+}
+
+.myyt-seen {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.myyt-seen:hover {
+  opacity: 1;
+}
+
+.myyt-group__mark {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--yt-spec-badge-chip-background, rgba(128, 128, 128, 0.15));
+  color: inherit;
+  opacity: 0.7;
+  font-family: "Roboto", "Arial", sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.myyt-group__mark:hover {
+  opacity: 1;
+}
+
 /* Filtered out by subs.js: Shorts, live, already watched. */
 .myyt-hidden {
   display: none !important;
