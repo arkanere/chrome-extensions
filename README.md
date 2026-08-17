@@ -12,7 +12,6 @@ so every extension is installed on its own.
 | [`reading-mode`](extensions/reading-mode) | One-click distraction-free reading view for any article — reads aloud, highlights, defines words, and diagrams the whole thing |
 | [`pdf-reader`](extensions/pdf-reader) | Opens PDFs in its own viewer and reads them aloud with Chrome's local neural voices, highlighting each word |
 | [`epub-reader`](extensions/epub-reader) | The same, for EPUBs: opens them in its own viewer and reads them aloud, word by word |
-| [`youtube-extension`](extensions/youtube-extension) | Ends a YouTube ad the moment it becomes skippable, so it is on screen as briefly as possible |
 
 ## Installing any of them
 
