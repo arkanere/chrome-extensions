@@ -108,6 +108,16 @@ insert heading elements between them and reorder them behind their heading.
    cards into nested containers of our own; the grid saw its item list
    emptying and loaded continuation after continuation, 11,000 videos deep,
    until the tab was unusable.
+4. **Never trust a card to keep holding the same video.** YouTube recycles card
+   elements while you scroll, binding new data into a node that never moves.
+   That fires no mutation of any kind, so a card filed under one channel
+   silently becomes a video from another and the grouping reads as broken.
+
+Because of rule 4 nothing is remembered about a card between passes. Every pass
+re-reads all cards from the DOM and re-arranges the grid to match. Passes are
+triggered by mutations *and by scrolling* — recycling produces no mutation, so
+scrolling is the only signal that it happened — and coalesced to one every
+200ms, since a pass re-reads every card.
 
 As a safety net, the feed stops and says so in the bar if it ever places more
 than 600 videos, hiding the sentinel so YouTube stops loading.
