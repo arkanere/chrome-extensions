@@ -10,7 +10,7 @@ Flag uncertainty explicitly. If you are not confident about an approach or techn
 
 I'm always open to ideas on better ways to do things. Please don't hesitate to suggest a better way, or one that has long lasting impact over a tactical change. (as a few examples)"
 
-
+Respond in simple technical English
 
 ## Git
 
