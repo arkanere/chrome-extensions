@@ -33,6 +33,29 @@ enough that it doesn't register next to what YouTube's own page does.
 anything `display:none`, which is how the button spends the countdown), and the
 box has a non-zero size.
 
+## Clicking is a ladder, not a click
+
+`el.click()` on its own **does not skip the ad**. The log caught this on the first
+real run: the button went clickable, we clicked, and then we clicked again every
+200ms forever while the ad played on. YouTube ignores the synthetic click event.
+
+So `skip()` escalates. Each stage gets `ESCALATE_MS` (400ms) to work, and if the
+list runs out we stop rather than hammer a button that is not listening:
+
+1. `el.click()` — kept because it is free and works on some player versions
+2. **pointer events** — a full `pointerover → pointerdown → mousedown → pointerup →
+   mouseup → click` sequence, dispatched at whatever `elementFromPoint` says is
+   really on top at the button's centre. That covers both "the player wants pointer
+   events" and "the handler is on a child or an overlay, not the element we matched"
+
+The log says which stage did it (`CLICK via …` / `RETRY via …`). Once real data
+shows one stage always wins, delete the other — the ladder is here to find that out,
+not to stay forever.
+
+If both stages fail, one `STUCK` block prints the button's tag, class, match count,
+outer HTML, and the hit-test result at its centre. That is the evidence needed to
+work out what to try next, and it prints once per ad rather than every tick.
+
 ## Logging — currently on
 
 `DEBUG` at the top of `content.js` is `true`, so the extension narrates every ad to

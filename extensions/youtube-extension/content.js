@@ -15,8 +15,9 @@
 (() => {
   const DEBUG = true;
 
-  const POLL_MS = 200;   // how often we look for a button to click
-  const OBSERVE_MS = 25; // how often the debug watcher looks. never clicks.
+  const POLL_MS = 200;     // how often we look for a button to click
+  const OBSERVE_MS = 25;   // how often the debug watcher looks. never clicks.
+  const ESCALATE_MS = 400; // how long a click stage gets before we try the next
 
   const SKIP_SELECTORS = [
     '.ytp-skip-ad-button',        // current
@@ -67,13 +68,82 @@
   }
 
   // --- clicking -------------------------------------------------------------
+  //
+  // el.click() alone does not skip the ad: the log showed the button staying put
+  // and being re-clicked every tick, forever. So clicking escalates. Each stage
+  // gets ESCALATE_MS to work before the next one is tried, and once the list runs
+  // out we stop rather than hammer a button that clearly is not listening.
+  //
+  // Stage 2 exists because YouTube's player generally drives off pointer events
+  // rather than the synthetic click event, and because the handler may sit on a
+  // child or an overlay rather than the element we matched — dispatching at the
+  // real hit-test target covers both.
+
+  function realClick(el) {
+    el.click();
+    return el;
+  }
+
+  function pointerClick(el) {
+    const box = el.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+
+    // Whatever is actually on top at that point is what a real cursor would hit.
+    const target = document.elementFromPoint(x, y) || el;
+
+    const base = {
+      bubbles: true, cancelable: true, composed: true, view: window,
+      clientX: x, clientY: y, screenX: x, screenY: y,
+      button: 0, detail: 1,
+      pointerId: 1, pointerType: 'mouse', isPrimary: true,
+    };
+
+    for (const type of ['pointerover', 'pointerenter', 'pointermove', 'mousemove',
+                        'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      const down = type.endsWith('down') || type === 'pointermove' || type === 'mousemove';
+      const Ctor = type.startsWith('pointer') ? PointerEvent : MouseEvent;
+      target.dispatchEvent(new Ctor(type, { ...base, buttons: down ? 1 : 0 }));
+    }
+    return target;
+  }
+
+  const STAGES = [
+    { name: 'el.click()', run: realClick },
+    { name: 'pointer events', run: pointerClick },
+  ];
+
+  let attempt = null; // { stage, at } for the button currently on screen
 
   function skip() {
     const found = findButton();
-    if (found && found.clickable) {
-      found.el.click();
-      if (DEBUG) onClick(found.sel);
+
+    // No clickable button: either no ad, or the countdown is still running.
+    // Either way the previous attempt is over — the next ad starts fresh.
+    if (!found || !found.clickable) {
+      attempt = null;
+      return;
     }
+
+    const t = performance.now();
+
+    if (!attempt) {
+      attempt = { stage: 0, at: t };
+    } else if (t - attempt.at < ESCALATE_MS) {
+      return; // give the stage we already tried time to take effect
+    } else if (attempt.stage + 1 >= STAGES.length) {
+      if (DEBUG && !attempt.gaveUp) {
+        attempt.gaveUp = true;
+        onStuck(found);
+      }
+      return; // out of ideas. stop hammering.
+    } else {
+      attempt = { stage: attempt.stage + 1, at: t };
+    }
+
+    const stage = STAGES[attempt.stage];
+    const target = stage.run(found.el);
+    if (DEBUG) onClick(found, stage.name, target);
   }
 
   setInterval(skip, POLL_MS);
@@ -91,10 +161,10 @@
   // ad: either a fresh `.ad-showing` span, or the next ad in a pod, which we
   // notice by the badge text changing or by our own click not ending the break.
 
-  if (!DEBUG) return;
-
   let seg = null;
   let count = 0; // ads seen in the current break. survives endSeg, unlike seg.
+
+  if (!DEBUG) return;
 
   function now() {
     return performance.now();
@@ -112,16 +182,18 @@
       n: count,
       badge: badge(),
       inDom: null,
-      ready: null,   // first moment the button was clickable
-      clicked: null,
-      warned: false,
+      ready: null,     // first moment the button was clickable
+      clicked: null,   // first click only. later stages do not overwrite it.
+      described: false,
     };
     console.log(`[yt-skip] ad start  #${seg.n}${seg.badge ? `  "${seg.badge}"` : ''}${reason ? `  (${reason})` : ''}`);
   }
 
   function endSeg() {
     if (!seg) return;
-    if (seg.clicked) {
+    if (seg.stuck) {
+      line(now(), 'ad ended on its own — nothing we did skipped it');
+    } else if (seg.clicked) {
       line(now(), `skipped — ad gone ${Math.round(now() - seg.clicked)}ms after click`);
     } else if (seg.ready) {
       line(now(), 'ad ended, button was clickable but we never clicked — BUG');
@@ -131,11 +203,46 @@
     seg = null;
   }
 
-  function onClick(sel) {
+  function onClick(found, stageName, target) {
     if (!seg) return;
-    seg.clicked = now();
-    const latency = seg.ready ? Math.round(seg.clicked - seg.ready) : null;
-    line(seg.clicked, `CLICK  ${sel}${latency === null ? '' : `  (latency ${latency}ms, poll is ${POLL_MS}ms)`}`);
+    const t = now();
+    if (seg.clicked === null) {
+      // Only the first click has a meaningful latency. Later ones are retries,
+      // and timing them against `ready` just produces a number that grows.
+      seg.clicked = t;
+      const latency = seg.ready === null ? null : Math.round(t - seg.ready);
+      line(t, `CLICK via ${stageName}${latency === null ? '' : `  (latency ${latency}ms, poll is ${POLL_MS}ms)`}`);
+    } else {
+      line(t, `RETRY via ${stageName} — previous stage did not end the ad`);
+    }
+    if (target !== found.el) {
+      line(t, `  ...dispatched at ${describe(target)}, not the matched element`);
+    }
+  }
+
+  // Printed once per ad, the moment the button is clickable. This is the raw
+  // material for deciding what the button actually is: which selector matched,
+  // whether more than one element matched, and what a real cursor would hit at
+  // its centre — if that is not the button or a child of it, something is on top.
+  function onStuck(found) {
+    if (seg) seg.stuck = true;
+    line(now(), 'STUCK — every stage tried, ad still showing. structure follows:');
+    for (const sel of SKIP_SELECTORS) {
+      const all = document.querySelectorAll(sel);
+      if (all.length) console.log(`[yt-skip]     ${sel} matched ${all.length}`);
+    }
+    const box = found.el.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    console.log(`[yt-skip]     matched: ${describe(found.el)}`);
+    console.log(`[yt-skip]     hit test at centre: ${hit ? describe(hit) : 'nothing'}` +
+                `${hit && found.el.contains(hit) ? ' (inside the button — good)' : ' (NOT the button — overlay?)'}`);
+    console.log(`[yt-skip]     html: ${found.el.outerHTML.slice(0, 300)}`);
+  }
+
+  function describe(el) {
+    if (!el) return 'null';
+    const cls = typeof el.className === 'string' ? el.className.trim().split(/\s+/).join('.') : '';
+    return `<${el.tagName.toLowerCase()}${cls ? `.${cls}` : ''}>`;
   }
 
   function observe() {
@@ -171,14 +278,6 @@
     if (found && found.clickable && !seg.ready) {
       seg.ready = now();
       line(seg.ready, `button clickable (${found.sel})`);
-    }
-
-    // We clicked, the ad is still here, and the button still is too. The click
-    // was rejected — worth knowing, because it means .click() is not enough and
-    // a real pointer event sequence would be needed.
-    if (seg.clicked && !seg.warned && now() - seg.clicked > 1000 && found && found.clickable) {
-      seg.warned = true;
-      line(now(), 'still showing 1s after CLICK, button still clickable — click had no effect');
     }
   }
 
