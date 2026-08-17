@@ -135,11 +135,18 @@ function scan(contents) {
   }
 
   if (unparsed) {
-    console.warn(
-      "[my-youtube] could not parse " + unparsed + " cards (extract v" + MyYT.EXTRACT_VERSION + ")"
-    );
+    const message =
+      "could not parse " + unparsed + " cards (extract v" + MyYT.EXTRACT_VERSION + ")";
+    console.warn("[my-youtube] " + message);
+    MyYT.bar.say(message, true);
     unparsed = 0;
+    return;
   }
+
+  /* Resting state: what the feed currently holds. */
+  let unseen = 0;
+  for (const group of groups.values()) unseen += group.items.children.length;
+  MyYT.bar.say(groups.size + " channels · " + unseen + " new");
 }
 
 /*

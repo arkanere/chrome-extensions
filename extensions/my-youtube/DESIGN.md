@@ -31,6 +31,7 @@ my-youtube/
   src/
     clean.css            static hide rules, injected at document_start
     feed.css             layout for the rebuilt subscription feed
+    bar.css              the extension's own bar, and room for it
     router.js            watches yt-navigate-finish, dispatches by path
     pages/
       home.js            redirect / -> /feed/subscriptions
@@ -39,7 +40,25 @@ my-youtube/
     lib/
       extract.js         DOM card -> video object   (the fragile file)
       seen.js            seen/unseen state in chrome.storage.local
+      bar.js             the top bar: MyYT.bar.say()
 ```
+
+## The bar
+
+Same idea as the PDF reader's header and `#notice`: a strip that says the
+extension is here, and a place for it to tell you something. A warning that
+only reaches the console is not a warning, because nobody opens devtools to
+read it.
+
+At rest it shows what the feed holds ("12 channels · 34 new"). Problems, such
+as `could not parse N cards (extract v2)`, appear in red with a dismiss button.
+Ordinary status has no dismiss button — the next scan replaces it anyway.
+
+Making room for it is additive on purpose. YouTube's masthead is fixed and
+`#page-manager` carries a margin equal to the masthead height that YouTube sets
+itself. Rather than recompute either number, push the masthead down by the bar
+height and add the same amount as padding inside `#page-manager`. Both hold
+whatever YouTube's own values are.
 
 ### Why the CSS is separate and static
 

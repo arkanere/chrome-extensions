@@ -7,9 +7,10 @@
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*"],
-      "css": ["src/clean.css", "src/feed.css"],
+      "css": ["src/clean.css", "src/feed.css", "src/bar.css"],
       "js": [
         "src/router.js",
+        "src/lib/bar.js",
         "src/lib/extract.js",
         "src/lib/seen.js",
         "src/pages/home.js",
