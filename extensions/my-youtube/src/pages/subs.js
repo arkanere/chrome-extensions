@@ -133,11 +133,50 @@ function halt(reason) {
   MyYT.bar.say(reason, true);
 }
 
+/*
+ * Put every card back behind its heading.
+ *
+ * Placing a card once is not enough. When YouTube loads a continuation it
+ * re-syncs #contents against its own data model, which puts the cards back in
+ * its order and strands our headings. So we re-assert the arrangement on every
+ * scan, moving only the nodes that are actually out of place.
+ */
+function repair() {
+  const sentinel = contents.querySelector("ytd-continuation-item-renderer");
+
+  for (const group of groups.values()) {
+    /* Our headings are foreign nodes in a container YouTube manages, so it
+     * may drop them during a re-sync. Put one back rather than arranging
+     * cards behind a heading that is no longer in the page. */
+    if (group.head.parentNode !== contents) contents.insertBefore(group.head, sentinel);
+
+    let prev = group.head;
+    for (const card of group.cards) {
+      /* Skip cards YouTube has removed: re-inserting would resurrect them. */
+      if (card.parentNode !== contents) continue;
+      if (prev.nextSibling !== card) contents.insertBefore(card, prev.nextSibling);
+      prev = card;
+    }
+  }
+}
+
 function scan() {
   if (stopped) return;
 
+  /*
+   * Our own moves are childList changes too. Stop observing while we rearrange
+   * or the observer would trigger itself without end.
+   */
+  if (observer) observer.disconnect();
+
   for (const card of contents.querySelectorAll("ytd-rich-item-renderer")) {
     processCard(card);
+  }
+  repair();
+
+  if (observer && !stopped) {
+    observer.takeRecords();
+    observer.observe(contents, { childList: true });
   }
 
   if (placed > MAX_CARDS) {
