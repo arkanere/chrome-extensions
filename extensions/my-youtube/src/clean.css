@@ -1,0 +1,40 @@
+/*
+ * Static hide rules, injected at document_start so nothing is ever painted.
+ *
+ * Only "hide this" belongs here. Anything needing logic lives in src/pages/.
+ *
+ * Selectors target YouTube's own custom element names and ids, never
+ * obfuscated class names. Element names are its component names and change
+ * rarely; class names change constantly.
+ *
+ * CSS cannot see the URL, so page-specific rules hang off the page-subtype
+ * attribute YouTube sets on <ytd-browse>.
+ */
+
+/* --- Homepage ---------------------------------------------------------- */
+
+/* home.js redirects away from /, but the grid must not flash first. */
+ytd-browse[page-subtype="home"] {
+  display: none !important;
+}
+
+/* --- Shorts ------------------------------------------------------------ */
+
+/* Shelves of Shorts inside any feed. */
+ytd-reel-shelf-renderer,
+ytd-rich-shelf-renderer[is-shorts] {
+  display: none !important;
+}
+
+/* Individual Shorts sitting in a normal grid. */
+ytd-rich-item-renderer:has(a[href^="/shorts/"]),
+ytd-video-renderer:has(a[href^="/shorts/"]),
+ytd-grid-video-renderer:has(a[href^="/shorts/"]) {
+  display: none !important;
+}
+
+/* Shorts entries in the full and collapsed sidebars. */
+ytd-guide-entry-renderer:has(a[title="Shorts"]),
+ytd-mini-guide-entry-renderer:has(a[title="Shorts"]) {
+  display: none !important;
+}

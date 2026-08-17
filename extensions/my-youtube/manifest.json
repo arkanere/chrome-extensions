@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "my-youtube",
+  "version": "0.1.0",
+  "description": "A quiet, subscription-first YouTube.",
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*"],
+      "css": ["src/clean.css"],
+      "js": ["src/router.js", "src/pages/home.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}
