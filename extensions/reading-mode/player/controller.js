@@ -150,8 +150,6 @@ export function create(model, speech, config = {}) {
     pause,
     seek,
     toggle: () => (playing ? pause() : play()),
-    next: () => seek(sentenceId + 1),
-    previous: () => seek(sentenceId - 1),
 
     get playing() {
       return playing;

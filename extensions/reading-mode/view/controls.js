@@ -1,4 +1,4 @@
-// view/controls — play/pause, skip sentence, speed, voice.
+// view/controls — play/pause, speed, voice.
 //
 // It builds its own markup into a container and reports every change through the
 // handlers it is given. It never touches the player or storage itself: viewer.js
@@ -82,27 +82,23 @@ function rateSlider(rate, range) {
   return { label, input, readout };
 }
 
-// handlers: { toggle, next, previous, voice(id), rate(value) }
+// handlers: { toggle, voice(id), rate(value) }
 export function create(container, { voices, voice, rate, rateRange }, handlers) {
-  const previous = button("↑", "Previous sentence", "previous");
   const play = button("Read aloud", "Read aloud (pause)", "play");
-  const next = button("↓", "Next sentence", "next");
   const speed = rateSlider(rate, rateRange);
   const picker = voicePicker(voices, voice);
 
   play.className = "wide";
 
-  const buttons = [previous, play, next];
-  container.append(previous, play, next, speed.label, picker);
+  const buttons = [play];
+  container.append(play, speed.label, picker);
 
   function showRate(value) {
     speed.readout.textContent = `${Number(value).toFixed(2).replace(/0$/, "")}×`;
   }
   showRate(rate);
 
-  previous.addEventListener("click", () => handlers.previous());
   play.addEventListener("click", () => handlers.toggle());
-  next.addEventListener("click", () => handlers.next());
 
   // input fires per drag step; the player restarts the current sentence on every
   // change (section 6's stop-and-remember), so only commit on release.

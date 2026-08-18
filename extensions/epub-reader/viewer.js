@@ -110,9 +110,6 @@ const controls = controlsFactory.create(
       clearNotice();
       player.toggle();
     },
-    next: () => player && player.next(),
-    previous: () => player && player.previous(),
-
     voice(id) {
       voice = voices.find((v) => v.id === id) || null;
       if (player) player.setVoice(id);

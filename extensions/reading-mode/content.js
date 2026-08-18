@@ -615,8 +615,6 @@
       { voices, voice: voice && voice.id, rate, rateRange: speechAdapter.rateRange },
       {
         toggle: () => player.toggle(),
-        next: () => player.next(),
-        previous: () => player.previous(),
         voice(id) {
           voice = voices.find((v) => v.id === id) || null;
           player.setVoice(id);
