@@ -83,3 +83,38 @@ html[dark] .myyt-bar__status--error {
 .myyt-bar__dismiss:hover {
   opacity: 1;
 }
+
+/*
+ * The off switch, kept at the far right and away from the dismiss button so
+ * clearing a message cannot turn the extension off by accident.
+ */
+.myyt-bar__power {
+  margin-left: 4px;
+  padding: 3px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+html[dark] .myyt-bar__power {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.myyt-bar__power:hover {
+  opacity: 1;
+}
+
+/* Switched off: the bar stays, but says so rather than looking active. */
+#myyt-bar.myyt-bar--off .myyt-bar__name,
+#myyt-bar.myyt-bar--off .myyt-bar__status {
+  opacity: 0.35;
+}
+
+#myyt-bar.myyt-bar--off .myyt-bar__power {
+  opacity: 1;
+}

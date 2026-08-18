@@ -41,6 +41,7 @@ my-youtube/
       extract.js         DOM card -> video object   (the fragile file)
       seen.js            seen/unseen state in chrome.storage.local
       bar.js             the top bar: MyYT.bar.say()
+      power.js           the off switch: MyYT.power
 ```
 
 ## The bar
@@ -59,6 +60,28 @@ Making room for it is additive on purpose. YouTube's masthead is fixed and
 itself. Rather than recompute either number, push the masthead down by the bar
 height and add the same amount as padding inside `#page-manager`. Both hold
 whatever YouTube's own values are.
+
+### The off switch
+
+At the right-hand end of the bar is one button: **turn off** / **turn on**.
+
+Chrome does not let an extension disable itself, so "off" means the extension
+stands down on the page — `clean.css` stops matching and no page module runs,
+leaving YouTube exactly as it ships. The bar itself stays, muted, because it
+is the only way back on. The flag lives in `chrome.storage.local`, so it holds
+across tabs and restarts.
+
+`clean.css` is gated on `data-myyt="on"`, an attribute `power.js` puts on
+`<html>`. A manifest stylesheet cannot be un-injected, so the switch takes the
+attribute away instead. Reading storage is async but hiding has to be in place
+before first paint, so the attribute goes on synchronously and only comes off
+again if storage says the extension is off: being briefly clean while switched
+off is harmless, the reverse would flash the homepage grid.
+
+Toggling reloads the page rather than undoing anything. Switching off
+mid-session would mean putting back every card `subs.js` moved and every class
+it stamped, and switching on would mean rebuilding from a grid we never
+watched. A reload gets both for free, and this is a button pressed rarely.
 
 ### Why the CSS is separate and static
 
@@ -198,6 +221,9 @@ settings layer every module would have to read through.
 
 If one rule later turns out to need turning off, that is the moment to add a
 setting for it — not before.
+
+The off switch in the bar is not a settings layer: it is all-or-nothing, it
+lives where you already are, and only the router and one attribute read it.
 
 ## Build order
 

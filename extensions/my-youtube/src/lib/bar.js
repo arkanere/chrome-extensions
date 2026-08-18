@@ -12,15 +12,17 @@
 
 const BAR_ID = "myyt-bar";
 
+let barEl = null;
 let statusEl = null;
 let dismissEl = null;
+let powerEl = null;
 let pending = null; /* a message that arrived before the bar existed */
 
 function build() {
   if (document.getElementById(BAR_ID)) return;
 
-  const bar = document.createElement("div");
-  bar.id = BAR_ID;
+  barEl = document.createElement("div");
+  barEl.id = BAR_ID;
 
   const name = document.createElement("span");
   name.className = "myyt-bar__name";
@@ -36,8 +38,15 @@ function build() {
   dismissEl.hidden = true;
   dismissEl.addEventListener("click", () => MyYT.bar.clear());
 
-  bar.append(name, statusEl, dismissEl);
-  document.body.prepend(bar);
+  powerEl = document.createElement("button");
+  powerEl.className = "myyt-bar__power";
+  powerEl.addEventListener("click", () => MyYT.power.set(!MyYT.power.enabled));
+
+  barEl.append(name, statusEl, dismissEl, powerEl);
+  document.body.prepend(barEl);
+
+  /* The bar can be built either side of the storage read, so state it now. */
+  MyYT.bar.refreshPower();
 
   if (pending) {
     MyYT.bar.say(pending.text, pending.isError);
@@ -62,6 +71,23 @@ MyYT.bar = {
     /* Only a problem is worth dismissing. The ordinary status is replaced by
      * the next scan anyway, so a button to clear it would achieve nothing. */
     dismissEl.hidden = !isError;
+  },
+
+  /*
+   * Called both when the bar is built and when the stored state arrives,
+   * whichever order those happen in.
+   */
+  refreshPower() {
+    if (!powerEl) return;
+    const on = MyYT.power.enabled;
+    powerEl.textContent = on ? "turn off" : "turn on";
+    powerEl.title = on
+      ? "Leave YouTube as it ships, until you turn this back on"
+      : "Switch my-youtube back on";
+    barEl.classList.toggle("myyt-bar--off", !on);
+
+    /* Nothing is scanning while off, so nothing else would ever say so. */
+    if (!on) MyYT.bar.say("off");
   },
 
   clear() {
