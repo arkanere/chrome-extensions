@@ -776,6 +776,15 @@
     const body = document.createElement("div");
     body.className = "body";
     body.innerHTML = article.content;
+    // Wikipedia only: the citation markers ([44], [c], [citation needed]) break
+    // the line up while reading and get spoken out loud. Readability strips the
+    // class="reference" they carry on the live page, so match them by shape: a
+    // <sup> whose whole text is bracketed.
+    if (/(^|\.)wikipedia\.org$/.test(location.hostname)) {
+      body.querySelectorAll("sup").forEach((n) => {
+        if (/^\s*\[[^\]]*\]\s*$/.test(n.textContent)) n.remove();
+      });
+    }
     // Belt and braces: innerHTML never executes <script>, but drop them and
     // any inline handlers Readability let through.
     body.querySelectorAll("script, style, iframe").forEach((n) => n.remove());
