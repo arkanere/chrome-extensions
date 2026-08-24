@@ -1,15 +1,23 @@
 # my-x
 
-A Chrome extension that lets you tag X accounts and drop everything they post
-out of your For You feed. It does not replace the feed or fight the algorithm —
-the algorithm stays exactly as it is, and we take out the part of it you have
-said you don't want.
+A Chrome extension that makes X less annoying in two small ways. It lets you
+tag X accounts and drop everything they post out of your For You feed, and it
+gives you a one-click copy of a post's text on the post's own page.
+
+The filtering does not replace the feed or fight the algorithm — the algorithm
+stays exactly as it is, and we take out the part of it you have said you don't
+want.
+
+The two jobs are unrelated and stay unrelated. Filtering is a For You thing;
+copying is a status-page thing. Neither knows about the other.
 
 ## Goals
 
 1. Tag any account, with your own free-form tags, from the post in front of you.
 2. Hide every post from an account whose tag is switched off, on For You.
 3. Flip a whole tag back on when you do want it, without untagging anything.
+4. Copy the text of a post from the post's own page, without selecting it by
+   hand and dragging in the header, the timestamp and the action bar with it.
 
 ## Non-goals
 
@@ -18,6 +26,8 @@ said you don't want.
 - No account/sync/backend. Everything is local to the browser.
 - No post-level classification, by keyword or otherwise. Tags are per account.
 - We do not touch X's own Mute or Block. This layer is separate and private.
+- Copy is the one post the URL points at, and its own text only. No walking a
+  thread, no quoted post's text, no resolving X's shortened links.
 
 ## The one thing this cannot do
 
@@ -46,9 +56,11 @@ my-x/
   src/
     bar.css              the extension's own bar, and room for it
     tagger.css           the tag button and its popup
+    post.css             the copy button
     watch.js             the tick: one observer, coalesced to 200ms
     pages/
-      home.js            the filter pass
+      home.js            the filter pass          (For You)
+      post.js            the copy button          (a post's own page)
     lib/
       extract.js         DOM cell -> post object   (the fragile file)
       tags.js            handle -> tags, and which tags are hidden
@@ -57,11 +69,17 @@ my-x/
       power.js           the off switch: MyX.power
 ```
 
-There is no router, because there is one page module. X fires no navigation
-event of its own, but it does not need to: every view change rewrites the DOM,
-so the single `MutationObserver` in `watch.js` already sees it, and `home.js`
-re-checks which tab is showing on every pass. `watch.js` is therefore just a
-coalesced tick, not a route table.
+There is no router, even with two page modules. X fires no navigation event of
+its own, but it does not need to: every view change rewrites the DOM, so the
+single `MutationObserver` in `watch.js` already sees it, and each page module
+re-decides on every pass whether it is on its own page — `home.js` re-reads
+which tab is showing, `post.js` re-reads the URL. Both stand down when the
+answer is no. `watch.js` is therefore just a coalesced tick, not a route table,
+and the modules stay independent: neither can stop the other running.
+
+Order matters in one place only. `post.js` is registered after `home.js`, so on
+a status page `home.js` sets the bar to `idle` first and `post.js` can overwrite
+it with a problem if it has one.
 
 There is no `clean.css`. Nothing here is a static hide — every decision needs
 to know who wrote the post — so there is nothing to inject at
@@ -70,7 +88,9 @@ first pass runs. Accepted.
 
 ## Where it applies
 
-For You only. That means the home timeline (`/home` or `/`) **with the For You
+Three different answers, one per piece.
+
+**Filtering: For You only.** That means the home timeline (`/home` or `/`) **with the For You
 tab selected**. Following, search results, replies, notifications, lists and
 profile pages are left completely alone: on a profile you have gone there on
 purpose, and on Following you already chose who you see.
@@ -80,11 +100,20 @@ lives in `extract.js` with the rest. If it cannot tell which tab is on, it
 returns unknown and the extension stands down for that view rather than
 guessing — failing towards showing you everything.
 
-**The bar is the exception.** It is present on every X page, not only For You,
-and says `idle` where no filtering happens. The bar is where your tags and the
-off switch live, so tying it to For You would mean the only way to switch a tag
-back on is to be standing on the page it affects. Filtering stays For You only;
-the controls are always reachable.
+**The copy button: a post's own page only.** `/<user>/status/<id>`, and on
+that page only the one post the URL names. Not the timeline: a copy button on
+every cell would be clutter on a page you are scrolling past, and the whole
+point of copying is that you have stopped on something.
+
+The tag button is not extended to the status page in return. You tag from the
+feed, where you are deciding what you want less of; on a post's own page you
+have gone there on purpose, and the only thing we add is copy.
+
+**The bar: everywhere.** It is present on every X page and says `idle` where no
+filtering happens. The bar is where your tags and the off switch live, so tying
+it to For You would mean the only way to switch a tag back on is to be standing
+on the page it affects. Filtering stays For You only; the controls are always
+reachable.
 
 ## Tags
 
@@ -173,6 +202,45 @@ account on screen. Removing the last hidden tag brings it back.
 Because cells are recycled, the button is stamped per pass like everything
 else, and the popup closes on scroll rather than trying to follow its post.
 
+## The copy button
+
+On a post's own page, one small button in the post's header row beside X's
+`...` menu — the only other control already sitting at that end of the row.
+Click it and the post's text is on the clipboard. The icon becomes a check for
+about a second and a half, then goes back. That is the whole feature.
+
+`navigator.clipboard.writeText` inside the click handler, so it runs on the
+user gesture and needs no extra permission.
+
+### Which post
+
+The hard part, and the only thing here that can go wrong. A status page is not
+one post: X renders the parents above it and the replies below it, every one of
+them the same `article[data-testid="tweet"]` as the post you came for.
+
+So the post is picked by identity, not by position: the status id in the URL is
+matched against the `/status/` links inside each article. No match anywhere
+means no button. **We never fall back to "probably the first one"** — a copy
+button on the wrong reply hands you the wrong text and looks like it worked,
+which is worse than no button at all. Same direction of failure as `readTab()`.
+
+This is DOM knowledge, so it lives in `extract.js` with everything else that
+knows what X's markup looks like.
+
+### What lands on the clipboard
+
+The post's text and nothing else. No handle, no timestamp, no URL — the URL is
+already in the address bar, and the text is the part you cannot get without a
+careful drag of the mouse.
+
+Read by walking the text node, not by `textContent`, because `textContent` gets
+two things wrong: X renders emoji as `<img alt="🙂">`, which would silently
+vanish, and it renders paragraphs as block elements, which would run together
+into one line. Emoji come back as their character and the line breaks survive.
+
+A post with no text at all — an image on its own — gets no button, because
+there is nothing to copy.
+
 ## The bar
 
 Same idea as my-youtube's: a strip at the top saying the extension is here,
@@ -227,6 +295,7 @@ The bar is the tag manager. Everything you can configure is one chip.
 2. `tags.js` + the tag button. Now it is usable.
 3. `bar.js` — count, chips, errors.
 4. `power.js` — the off switch.
+5. `post.js` + the copy button. Independent of everything above.
 
 ## Known trade-offs
 
@@ -238,6 +307,14 @@ Written down so they are choices rather than surprises later:
 - Renaming an account loses its tags.
 - X's Mute would hide an account *and* feed the algorithm a signal, which we
   cannot do. What this buys instead is grouping and bulk reversibility.
+- Copy takes the post's text **as X rendered it**. Two consequences. Links come
+  out in X's shortened display form, `example.com/some-lo…`, because the real
+  href is a `t.co` redirect — neither string is the actual destination, and
+  getting it would mean a network request this extension does not make. And a
+  post X has truncated behind "Show more" copies truncated; expand it first.
+- Copy is one post, not a thread. Copying an author's whole chain would mean
+  guessing which surrounding cells belong to it, which is a second layer of
+  guessing on markup we do not own.
 - Ads and promoted posts are not touched, deliberately. Dropping them would be
   a static hide on X's own promoted marker, which is a different job from
   "my tags" and would bring back a `clean.css` this extension does not need.
