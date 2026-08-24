@@ -16,6 +16,7 @@
       ],
       "js": [
         "src/watch.js",
+        "src/lib/restore.js",
         "src/lib/budget.js",
         "src/lib/tags.js",
         "src/lib/bar.js",

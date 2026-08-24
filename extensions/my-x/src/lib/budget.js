@@ -32,6 +32,9 @@ let ids = new Set();
 let limit = DEFAULT_LIMIT;
 let day = null;
 
+/* Same guard as tags.js: an empty set before load() means "not read yet". */
+let loaded = false;
+
 /* Local date, not UTC: the boundary that matters is your midnight. */
 function today() {
   const d = new Date();
@@ -53,6 +56,7 @@ function clampLimit(n) {
 }
 
 function saveBudget() {
+  if (!loaded) return;
   day = today();
   chrome.storage.local.set({
     [BUDGET_KEY]: { date: day, ids: [...ids], limit },
@@ -78,6 +82,7 @@ MyX.budget = {
   async load() {
     const stored = await chrome.storage.local.get(BUDGET_KEY);
     adopt(stored[BUDGET_KEY]);
+    loaded = true;
   },
 
   get limit() {

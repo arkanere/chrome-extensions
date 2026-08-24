@@ -20,7 +20,21 @@ const HIDDEN_KEY = "hidden";
 let byHandle = {};
 let hidden = new Set();
 
+/*
+ * Nothing may be written before load() has answered. Until then byHandle is
+ * an empty object that means "not read yet", not "you have no tags", and
+ * writing it out erases everything you have.
+ *
+ * This is not hypothetical: budget.js once declared a top-level save() of its
+ * own, which in the one shared content-script scope was replaced by this one,
+ * and its first write — before load() had returned — wiped a day's tagging.
+ * The name collision is fixed; this is the guard that makes the whole class
+ * of mistake harmless.
+ */
+let loaded = false;
+
 function save() {
+  if (!loaded) return;
   chrome.storage.local.set({
     [TAGS_KEY]: byHandle,
     [HIDDEN_KEY]: [...hidden],
@@ -36,6 +50,7 @@ MyX.tags = {
     const stored = await chrome.storage.local.get([TAGS_KEY, HIDDEN_KEY]);
     byHandle = stored[TAGS_KEY] || {};
     hidden = new Set(stored[HIDDEN_KEY] || []);
+    loaded = true;
   },
 
   tagsFor(handle) {
