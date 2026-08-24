@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "my-x",
+  "version": "0.1.0",
+  "description": "Tag X accounts and drop them out of your For You feed.",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["*://x.com/*", "*://twitter.com/*"],
+      "css": ["src/bar.css", "src/tagger.css"],
+      "js": [
+        "src/watch.js",
+        "src/lib/power.js",
+        "src/lib/tags.js",
+        "src/lib/bar.js",
+        "src/lib/extract.js",
+        "src/lib/tagger.js",
+        "src/pages/home.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ]
+}
