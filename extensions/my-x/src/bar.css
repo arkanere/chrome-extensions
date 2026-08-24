@@ -103,38 +103,35 @@ html {
 }
 
 /*
- * The off switch, kept at the far right and away from the dismiss button so
- * clearing a message cannot turn the extension off by accident.
+ * The daily budget, kept at the far right and away from the dismiss button so
+ * clearing a message cannot change your limit by accident.
  */
-.myx-bar__power {
+.myx-budget {
   flex: none;
   margin-left: 4px;
-  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.6;
+}
+
+.myx-budget:hover,
+.myx-budget:focus-within {
+  opacity: 1;
+}
+
+.myx-budget__limit {
+  width: 44px;
+  padding: 2px 4px;
   border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
+  border-radius: 6px;
   background: transparent;
   color: inherit;
   font-family: inherit;
   font-size: 11px;
-  opacity: 0.6;
-  cursor: pointer;
+  text-align: center;
 }
 
-#myx-bar[data-myx-theme="dark"] .myx-bar__power {
+#myx-bar[data-myx-theme="dark"] .myx-budget__limit {
   border-color: rgba(255, 255, 255, 0.25);
-}
-
-.myx-bar__power:hover {
-  opacity: 1;
-}
-
-/* Switched off: the bar stays, but says so rather than looking active. */
-#myx-bar.myx-bar--off .myx-bar__name,
-#myx-bar.myx-bar--off .myx-bar__status,
-#myx-bar.myx-bar--off .myx-bar__tags {
-  opacity: 0.35;
-}
-
-#myx-bar.myx-bar--off .myx-bar__power {
-  opacity: 1;
 }

@@ -1,0 +1,51 @@
+/*
+ * A spent timeline.
+ *
+ * The cells are hidden, not removed, for the same reason the filter hides
+ * rather than removes: X decides when to fetch from the cells it is holding,
+ * and pulling nodes out of a virtualized list is how you end up loading
+ * eleven thousand of them.
+ *
+ * The panel is our own node inside the timeline root, so it is not hidden by
+ * the rule above — it is not a cell.
+ */
+
+[data-testid="primaryColumn"].myx-blocked [data-testid="cellInnerDiv"] {
+  display: none !important;
+}
+
+.myx-panel {
+  margin: 48px auto;
+  max-width: 420px;
+  padding: 28px 24px;
+  text-align: center;
+  font-family: "TwitterChirp", -apple-system, "Segoe UI", sans-serif;
+  color: inherit;
+}
+
+.myx-panel__line {
+  font-size: 15px;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.myx-panel__sub {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.55;
+}
+
+/* The same control as the bar's, given room to be read here. */
+.myx-panel .myx-budget {
+  margin-top: 20px;
+  justify-content: center;
+  font-size: 13px;
+  opacity: 1;
+}
+
+.myx-panel .myx-budget__limit {
+  border-color: currentColor;
+  opacity: 0.6;
+  font-size: 13px;
+  width: 56px;
+}

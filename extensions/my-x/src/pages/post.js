@@ -1,9 +1,9 @@
 /*
  * The copy button, on a post's own page.
  *
- * Unrelated to the filter. It shares the tick and the off switch and nothing
- * else: home.js does not know this file exists, and this file never hides
- * anything. It stands down anywhere that is not /<user>/status/<id>.
+ * Unrelated to the filter. It shares the tick and nothing else: home.js does
+ * not know this file exists, and this file never hides anything. It stands
+ * down anywhere that is not /<user>/status/<id>.
  *
  * Registered after home.js so that on a status page — where home.js has just
  * set the bar to "idle" — a problem here can overwrite it.
@@ -96,7 +96,7 @@ function stampCopy(article, text) {
 }
 
 function copyPass() {
-  if (!MyX.power.enabled || !MyX.extract.statusId()) {
+  if (!MyX.extract.statusId()) {
     unstampCopy();
     return;
   }

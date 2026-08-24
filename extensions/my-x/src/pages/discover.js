@@ -41,7 +41,7 @@ function discoverPass() {
     recommended = new Set();
   }
 
-  if (!MyX.power.enabled || !MyX.extract.statusId()) {
+  if (!MyX.extract.statusId()) {
     unhideDiscover();
     return;
   }

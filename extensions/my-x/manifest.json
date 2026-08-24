@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "my-x",
-  "version": "0.1.0",
-  "description": "Tag X accounts to drop them out of your For You feed, copy a post's text from its own page, and hide the \"Discover more\" block under a post.",
+  "version": "0.2.0",
+  "description": "Cap how many posts you read a day, tag X accounts to drop them out of your For You feed, copy a post's text from its own page, and hide the \"Discover more\" block under a post.",
   "permissions": ["storage"],
   "content_scripts": [
     {
@@ -11,11 +11,12 @@
         "src/bar.css",
         "src/tagger.css",
         "src/post.css",
-        "src/discover.css"
+        "src/discover.css",
+        "src/budget.css"
       ],
       "js": [
         "src/watch.js",
-        "src/lib/power.js",
+        "src/lib/budget.js",
         "src/lib/tags.js",
         "src/lib/bar.js",
         "src/lib/extract.js",

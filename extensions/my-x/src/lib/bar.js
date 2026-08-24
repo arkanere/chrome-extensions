@@ -6,8 +6,8 @@
  * console is not a warning.
  *
  * The one difference is that it is present on every X page, not only For You,
- * because this is where your tags and the off switch live: tying it to For You
- * would mean the only way to switch a tag back on is to be standing on the
+ * because this is where your tags and your daily limit live: tying it to For
+ * You would mean the only way to switch a tag back on is to be standing on the
  * page it affects.
  */
 
@@ -17,7 +17,7 @@ let barEl = null;
 let statusEl = null;
 let tagsEl = null;
 let dismissEl = null;
-let powerEl = null;
+let budgetEl = null;
 let pending = null; /* a message that arrived before the bar existed */
 
 function build() {
@@ -43,11 +43,9 @@ function build() {
   dismissEl.hidden = true;
   dismissEl.addEventListener("click", () => MyX.bar.clear());
 
-  powerEl = document.createElement("button");
-  powerEl.className = "myx-bar__power";
-  powerEl.addEventListener("click", () => MyX.power.set(!MyX.power.enabled));
+  budgetEl = buildBudget();
 
-  barEl.append(name, statusEl, tagsEl, dismissEl, powerEl);
+  barEl.append(name, statusEl, tagsEl, dismissEl, budgetEl);
   document.body.append(barEl);
 
   makeRoom();
@@ -55,13 +53,56 @@ function build() {
   applyTheme();
 
   /* The bar can be built either side of the storage read, so state it now. */
-  MyX.bar.refreshPower();
+  MyX.bar.refreshBudget();
   MyX.bar.refreshTags();
 
   if (pending) {
     MyX.bar.say(pending.text, pending.isError);
     pending = null;
   }
+}
+
+/*
+ * The budget control: "47 / [100] today", where the number is editable.
+ *
+ * The same control is used by the panel that covers a spent timeline, so
+ * there is one place that knows how it works. The caller keeps the element
+ * and calls its myxRefresh() to restate the count.
+ */
+function buildBudget(onLimit) {
+  const wrap = document.createElement("span");
+  wrap.className = "myx-budget";
+
+  const count = document.createElement("span");
+  count.className = "myx-budget__count";
+
+  const field = document.createElement("input");
+  field.className = "myx-budget__limit";
+  field.type = "number";
+  field.min = String(MyX.budget.MIN_LIMIT);
+  field.max = String(MyX.budget.MAX_LIMIT);
+  field.title = "Posts you allow yourself each day";
+
+  /* On change, not on input: every keystroke would re-tick, and a half-typed
+   * "5" on the way to "50" would block the feed under your hands. */
+  field.addEventListener("change", () => {
+    MyX.budget.setLimit(field.value);
+    field.value = String(MyX.budget.limit);
+    if (onLimit) onLimit();
+  });
+
+  const label = document.createElement("span");
+  label.className = "myx-budget__label";
+  label.textContent = "today";
+
+  wrap.append(count, field, label);
+  wrap.myxRefresh = () => {
+    count.textContent = `${MyX.budget.count()} /`;
+    if (document.activeElement !== field) {
+      field.value = String(MyX.budget.limit);
+    }
+  };
+  return wrap;
 }
 
 /*
@@ -89,8 +130,8 @@ const CHROME_ROOTS = [
 const CHROME_DEPTH = 6;
 
 /*
- * Not gated on the off switch: switched off the bar is still there, muted,
- * because it is the only way back on — so it still needs its strip of room.
+ * Run on every tick: X rebuilds its columns on every view change, so the
+ * elements pushed down last time may not be the ones on the page now.
  */
 function makeRoom() {
   for (const sel of CHROME_ROOTS) {
@@ -189,18 +230,12 @@ MyX.bar = {
    * Called both when the bar is built and when the stored state arrives,
    * whichever order those happen in.
    */
-  refreshPower() {
-    if (!powerEl) return;
-    const on = MyX.power.enabled;
-    powerEl.textContent = on ? "turn off" : "turn on";
-    powerEl.title = on
-      ? "Leave X as it ships, until you turn this back on"
-      : "Switch my-x back on";
-    barEl.classList.toggle("myx-bar--off", !on);
-
-    /* Nothing is scanning while off, so nothing else would ever say so. */
-    if (!on) MyX.bar.say("off");
+  refreshBudget() {
+    if (budgetEl) budgetEl.myxRefresh();
   },
+
+  /* For the panel over a spent timeline, in home.js. */
+  buildBudget,
 };
 
 build();

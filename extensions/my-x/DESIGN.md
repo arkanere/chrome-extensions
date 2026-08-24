@@ -1,26 +1,28 @@
 # my-x
 
-A Chrome extension that makes X less annoying in three small ways. It lets you
-tag X accounts and drop everything they post out of your For You feed, it
-gives you a one-click copy of a post's text on the post's own page, and it
-takes the "Discover more" block off the bottom of a post's replies.
+A Chrome extension that makes X less annoying in four small ways. It caps how
+many posts you read in a day, it lets you tag X accounts and drop everything
+they post out of your For You feed, it gives you a one-click copy of a post's
+text on the post's own page, and it takes the "Discover more" block off the
+bottom of a post's replies.
 
 The filtering does not replace the feed or fight the algorithm — the algorithm
 stays exactly as it is, and we take out the part of it you have said you don't
 want.
 
-The jobs are unrelated and stay unrelated. Filtering is a For You thing;
-copying and the "Discover more" hide are status-page things. None of them
-knows about the others.
+The jobs are unrelated and stay unrelated. Filtering is a For You thing; the
+budget is a home-timeline thing, both tabs; copying and the "Discover more"
+hide are status-page things. None of them knows about the others.
 
 ## Goals
 
-1. Tag any account, with your own free-form tags, from the post in front of you.
-2. Hide every post from an account whose tag is switched off, on For You.
-3. Flip a whole tag back on when you do want it, without untagging anything.
-4. Copy the text of a post from the post's own page, without selecting it by
+1. Stop the home timeline once you have read the number of posts you set.
+2. Tag any account, with your own free-form tags, from the post in front of you.
+3. Hide every post from an account whose tag is switched off, on For You.
+4. Flip a whole tag back on when you do want it, without untagging anything.
+5. Copy the text of a post from the post's own page, without selecting it by
    hand and dragging in the header, the timestamp and the action bar with it.
-5. End a post's replies where the replies end — no recommended posts from
+6. End a post's replies where the replies end — no recommended posts from
    across X pretending to be part of the conversation.
 
 ## Non-goals
@@ -29,6 +31,8 @@ knows about the others.
   what X already rendered.
 - No account/sync/backend. Everything is local to the browser.
 - No post-level classification, by keyword or otherwise. Tags are per account.
+- No off switch. A limit you can turn off in one click is not a limit, so the
+  bar has a number and no bypass.
 - We do not touch X's own Mute or Block. This layer is separate and private.
 - Copy is the one post the URL points at, and its own text only. No walking a
   thread, no quoted post's text, no resolving X's shortened links.
@@ -62,9 +66,10 @@ my-x/
     tagger.css           the tag button and its popup
     post.css             the copy button
     discover.css         the "Discover more" hide rule
+    budget.css           a spent timeline, and its panel
     watch.js             the tick: one observer, coalesced to 200ms
     pages/
-      home.js            the filter pass          (For You)
+      home.js            the filter pass, and the budget's viewport watch
       post.js            the copy button          (a post's own page)
       discover.js        "Discover more" hidden   (a post's own page)
     lib/
@@ -72,7 +77,7 @@ my-x/
       tags.js            handle -> tags, and which tags are hidden
       tagger.js          the per-post tag button and its popup
       bar.js             the bar: MyX.bar
-      power.js           the off switch: MyX.power
+      budget.js          the daily limit: MyX.budget
 ```
 
 There is no router, even with two page modules. X fires no navigation event of
@@ -94,7 +99,13 @@ first pass runs. Accepted.
 
 ## Where it applies
 
-Four different answers, one per piece.
+Five different answers, one per piece.
+
+**The budget: the home timeline, both tabs.** For You *and* Following, because
+otherwise switching tabs is a free reset. Everything else — a post's own page,
+a profile, search, notifications — is never counted and never blocked: hitting
+the limit ends the endless feed, it does not lock you out of X, and a link
+someone sends you still opens.
 
 **Filtering: For You only.** That means the home timeline (`/home` or `/`) **with the For You
 tab selected**. Following, search results, replies, notifications, lists and
@@ -135,8 +146,8 @@ feed, where you are deciding what you want less of; on a post's own page you
 have gone there on purpose, and the only thing we add is copy.
 
 **The bar: everywhere.** It is present on every X page and says `idle` where no
-filtering happens. The bar is where your tags and the off switch live, so tying
-it to For You would mean the only way to switch a tag back on is to be standing
+filtering happens. The bar is where your tags and your daily limit live, so
+tying it to For You would mean the only way to switch a tag back on is to be standing
 on the page it affects. Filtering stays For You only; the controls are always
 reachable.
 
@@ -299,9 +310,6 @@ both cheap and safe: about forty elements per pass, and it cannot reach inside
 a post, so a pinned element within someone's tweet is never touched. X sets no
 inline `top` on any of them, so there is nothing to fight over.
 
-Room is made whether the extension is on or off, because the bar is there
-either way.
-
 At rest it shows what it did — `hidden 23 posts` — followed by your tags as
 chips. A chip is dim when the tag is hidden and bright when it is showing;
 clicking it toggles that tag for every account carrying it. Problems, such as
@@ -312,18 +320,68 @@ The count is for the session and resets on reload.
 Toggling a chip re-runs the pass rather than reloading, since un-hiding is just
 taking `display: none` off cells that are still sitting there.
 
-### The off switch
+### The limit control
 
-At the right-hand end, one button: **turn off** / **turn on**. Off means the
-extension stands down — no pass runs, no buttons are stamped, the bar stays
-muted because it is the only way back on. The flag lives in
-`chrome.storage.local` so it holds across tabs and restarts. Turning off
-re-runs the pass to unhide everything; it does not need a reload, because
-nothing has been moved or removed.
+At the right-hand end, where an off switch would otherwise be: `47 / [100]
+today`, with the number editable in place. It is the only setting this
+extension has. Changing it takes effect on the next tick, with no reload,
+exactly like a tag chip.
+
+It fires on `change` rather than on every keystroke: a half-typed `5` on the
+way to `50` would otherwise block the feed under your hands.
+
+## The daily budget
+
+The feed is infinite, and infinite is the hook. Tagging takes out the part of
+it you already know you do not want; the budget is about volume.
+
+**What counts as a view.** A post cell at least half in the viewport for one
+continuous second. Not "rendered" — X renders far ahead of what you can see,
+so that would spend the day in one screenful — and not "scrolled past", or a
+single flick of the wheel would eat thirty posts. One `IntersectionObserver`
+at `threshold: 0.5`, a `setTimeout` on entry, cleared on exit.
+
+Counting is per `postId`, so scrolling back over a post you have already read
+is free.
+
+**Why home.js and not its own module.** The pass already walks every cell and
+already has its post object, so it is the one place that knows a cell's id
+without reading the DOM twice. The viewport watch hangs off that loop. A cell
+hidden by a tag is never observed: it is not on the screen, so it was never
+read.
+
+`extract.js` needs nothing new. This is the first feature here that adds no
+DOM knowledge at all.
+
+**The state**, one key in `chrome.storage.local`:
+
+```
+budget { date: "2026-08-25", ids: ["1234", ...], limit: 100 }
+```
+
+Ids rather than a bare count, for two reasons: the same post open in two tabs
+must count once, and a reload must not hand you a fresh day. The list is
+bounded by the limit, so it stays small.
+
+**The day boundary** is local midnight — the one that matters is yours, not
+UTC. The date is checked on every read, not only at load, because a tab can
+sit open across it.
+
+**A spent day** hides every cell in the timeline with `display: none`, the
+same mechanism and for the same reason as the filter, and puts one panel of
+our own in the timeline root saying so. The limit field is in the panel, so
+raising it is one place and not a hunt back up to the bar. No countdown, no
+"ten more posts" button.
+
+**It is not enforceable, and is not meant to be.** The storage can be cleared
+from DevTools and the extension can be switched off in `chrome://extensions`.
+This is a line you drew for yourself, not a lock — what it removes is the
+frictionless part, which is the part that does the damage.
 
 ## No options page
 
-The bar is the tag manager. Everything you can configure is one chip.
+The bar is the tag manager and the limit field. Everything you can configure
+is one chip or one number.
 
 ## Build order
 
@@ -332,14 +390,17 @@ The bar is the tag manager. Everything you can configure is one chip.
    rule against the real page.
 2. `tags.js` + the tag button. Now it is usable.
 3. `bar.js` — count, chips, errors.
-4. `power.js` — the off switch.
-5. `post.js` + the copy button. Independent of everything above.
+4. `budget.js` + the limit field, counting only. Watch the number climb on the
+   real feed before anything is hidden by it.
+5. `budget.css` + the block.
+6. `post.js` + the copy button. Independent of everything above.
 
 ## Known trade-offs
 
 Written down so they are choices rather than surprises later:
 
 - The long tail leaks forever (see "The one thing this cannot do").
+- The daily limit is a line, not a lock (see "The daily budget").
 - A tagged post can flash before the first pass, because nothing can be hidden
   statically.
 - Renaming an account loses its tags.

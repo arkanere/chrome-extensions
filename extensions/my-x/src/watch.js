@@ -62,10 +62,10 @@ new MutationObserver(MyX.tick).observe(document.body, {
 /*
  * Deferred by a turn so the modules loaded after this file have registered
  * themselves first, then waits for the stored on/off state — no pass may run
- * before we know whether the extension is switched on.
+ * before we know your tags and how much of the day is left.
  */
 setTimeout(async () => {
-  await MyX.power.load();
+  await MyX.budget.load();
   await MyX.tags.load();
   MyX.bar.refreshTags();
   MyX.tickNow();
