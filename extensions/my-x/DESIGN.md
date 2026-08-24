@@ -353,13 +353,27 @@ feed spends thirty posts in a few seconds. That is the rule working, not
 failing, but it means 100 is closer to ten minutes than to an evening.
 
 **Why home.js and not its own module.** The pass already walks every cell and
-already has its post object, so it is the one place that knows a cell's id
-without reading the DOM twice. The viewport watch hangs off that loop. A cell
-hidden by a tag is never observed: it is not on the screen, so it was never
-read.
+already has its post object, so it is the one place that can decide this
+without reading the DOM twice. Being on screen is a rect: `bottom > 0` and
+`top < innerHeight`, measured in the pass.
 
-`extract.js` needs nothing new. This is the first feature here that adds no
-DOM knowledge at all.
+An `IntersectionObserver` was tried first and is the wrong tool here. Chrome
+only computes intersections for a tab it is actually rendering, so an X tab
+sitting behind another window counted nothing at all, and observed cells could
+live their whole life without a single callback. A rect is exact, costs
+nothing on the handful of cells the pass already touches, and needs no second
+source of truth.
+
+`watch.js` therefore listens for `scroll` as well as mutations: what is on
+screen changes with no DOM change, and X mutates while you scroll but not on
+every pixel of it. Passive, and coalesced into the same 200ms tick.
+
+**One global scope.** Every content script file shares one scope, so a
+top-level `function save()` in two files is not two functions — the later file
+silently replaces the earlier one. `budget.js` had exactly that collision with
+`tags.js` and spent its first day writing to the tags keys and counting
+nothing. Hence `saveBudget()`. Top-level names in this extension have to be
+unique across all of `src/`, and that is worth checking when adding a file.
 
 **The state**, one key in `chrome.storage.local`:
 

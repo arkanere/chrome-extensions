@@ -42,39 +42,26 @@ function shouldHide(post) {
  * The viewport watch, for the budget.
  *
  * A post counts the moment any part of it reaches the screen. Not when X
- * renders it — X renders far ahead of what you can see, so that would spend
- * the day in one screenful — but there is no dwell time and no reading test
- * beyond that. A post you scrolled past is a post the feed spent on you,
- * whether you stopped on it or not; that is the thing being budgeted.
+ * renders it — X renders far ahead of what you can see, so counting what is
+ * in the DOM would spend the day in one screenful — but there is no dwell
+ * time and no reading test beyond that. A post you scrolled past is a post
+ * the feed spent on you, whether you stopped on it or not; that is the thing
+ * being budgeted.
  *
- * The pass supplies the id for each cell, so a cell X destroys and recreates
- * mid-scroll is no problem: the id is what is counted, and budget.js counts
- * an id once. The maps are weak, so a destroyed node needs no cleanup.
+ * Measured from the cell's box in the pass, not with an IntersectionObserver.
+ * The observer was tried first and does not work here: Chrome only computes
+ * intersections for a tab it is actually rendering, so an X tab sitting behind
+ * another window counted nothing at all, and observed cells could go their
+ * whole life without one callback. A rect is exact, costs nothing on the
+ * handful of cells the pass already walks, and needs no second source of
+ * truth.
  *
- * A hidden cell is never observed: it never reached the screen, so the feed
- * never spent it.
+ * Counting is on the post id, never the node: X destroys and recreates cells
+ * as you scroll, and budget.js counts an id once.
  */
-const idOfCell = new WeakMap();
-const observed = new WeakSet();
-
-const viewport = new IntersectionObserver(
-  (entries) => {
-    let counted = false;
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      MyX.budget.saw(idOfCell.get(e.target));
-      counted = true;
-    }
-    if (counted) MyX.tick();
-  },
-  { threshold: 0 }
-);
-
-function watchCell(cell, post) {
-  idOfCell.set(cell, post.postId);
-  if (observed.has(cell)) return;
-  observed.add(cell);
-  viewport.observe(cell);
+function onScreen(cell) {
+  const r = cell.getBoundingClientRect();
+  return r.height > 0 && r.bottom > 0 && r.top < innerHeight;
 }
 
 /*
@@ -164,7 +151,7 @@ function pass() {
       hiddenIds.add(post.postId);
     } else {
       if (filtering) MyX.tagger.stamp(cell, post);
-      watchCell(cell, post);
+      if (onScreen(cell)) MyX.budget.saw(post.postId);
     }
   }
 

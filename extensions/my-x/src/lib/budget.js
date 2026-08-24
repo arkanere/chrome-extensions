@@ -16,6 +16,11 @@
  *
  * Read synchronously through count()/reached() after an awaited load(),
  * because the pass has to decide with no chance to await.
+ *
+ * saveBudget() and not save(): every content script file shares one global
+ * scope, tags.js has a save() of its own and is loaded after this one, so a
+ * function called save() here is silently replaced by that one. It was, and
+ * this file spent a day writing to the tags keys and counting nothing.
  */
 
 const BUDGET_KEY = "budget";
@@ -47,7 +52,7 @@ function clampLimit(n) {
   return Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, v));
 }
 
-function save() {
+function saveBudget() {
   day = today();
   chrome.storage.local.set({
     [BUDGET_KEY]: { date: day, ids: [...ids], limit },
@@ -61,7 +66,7 @@ function save() {
 function rollOver() {
   if (day === today()) return false;
   ids = new Set();
-  save();
+  saveBudget();
   return true;
 }
 
@@ -94,7 +99,7 @@ MyX.budget = {
     rollOver();
     if (ids.has(postId) || ids.size >= limit) return;
     ids.add(postId);
-    save();
+    saveBudget();
     MyX.bar.refreshBudget();
   },
 
@@ -103,7 +108,7 @@ MyX.budget = {
      * than dropping you back to the default under your hands. */
     if (!Number.isFinite(Number(n))) return;
     limit = clampLimit(n);
-    save();
+    saveBudget();
     MyX.bar.refreshBudget();
     MyX.tickNow();
   },

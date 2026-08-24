@@ -60,6 +60,14 @@ new MutationObserver(MyX.tick).observe(document.body, {
 });
 
 /*
+ * Scrolling too, because the budget reads which posts are on the screen and
+ * that changes with no DOM change at all — X mutates constantly while you
+ * scroll, but not on every pixel of it. Coalesced like everything else, and
+ * passive so it cannot slow the scroll down.
+ */
+addEventListener("scroll", MyX.tick, { passive: true, capture: true });
+
+/*
  * Deferred by a turn so the modules loaded after this file have registered
  * themselves first, then waits for the stored on/off state — no pass may run
  * before we know your tags and how much of the day is left.
