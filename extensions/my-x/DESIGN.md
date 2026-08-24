@@ -204,13 +204,20 @@ else, and the popup closes on scroll rather than trying to follow its post.
 
 ## The copy button
 
-On a post's own page, one small button in the post's header row beside X's
-`...` menu — the only other control already sitting at that end of the row.
-Click it and the post's text is on the clipboard. The icon becomes a check for
-about a second and a half, then goes back. That is the whole feature.
+On a post's own page, one small button on the end of the post's action row —
+after reply, repost, like, bookmark and share. Click it and the post's text is
+on the clipboard. The icon becomes a check for about a second and a half, then
+goes back. That is the whole feature.
 
 `navigator.clipboard.writeText` inside the click handler, so it runs on the
 user gesture and needs no extra permission.
+
+The action row rather than the header, which is where the tag button goes in
+the feed. That was tried first and does not work here: on a status page the
+right-hand end of the header is a 28px-wide flex **column**, so a button put
+beside the `...` stacks on top of it instead of sitting next to it. The action
+row is a real horizontal row with room in it, and next to share is where
+"copy the text" belongs anyway.
 
 ### Which post
 
@@ -233,10 +240,16 @@ The post's text and nothing else. No handle, no timestamp, no URL — the URL is
 already in the address bar, and the text is the part you cannot get without a
 careful drag of the mouse.
 
-Read by walking the text node, not by `textContent`, because `textContent` gets
-two things wrong: X renders emoji as `<img alt="🙂">`, which would silently
-vanish, and it renders paragraphs as block elements, which would run together
-into one line. Emoji come back as their character and the line breaks survive.
+Read by walking the text node, not by `textContent`, for one reason: X renders
+emoji as twemoji images — `<img alt="😬" src=".../1f62c.svg">` — and
+`textContent` drops them silently. The `alt` is the character itself, so
+putting it back is the whole fix.
+
+Line breaks need no work. X sets `white-space: pre-wrap` on the text and leaves
+the newlines in the text nodes, which was measured on the live page. Adding a
+newline for block-level elements as well, which sounds right, is actively
+wrong: X wraps a `@mention` in an `inline-flex` div whose inner span is
+`display: block`, so it breaks lines in the middle of a sentence.
 
 A post with no text at all — an image on its own — gets no button, because
 there is nothing to copy.

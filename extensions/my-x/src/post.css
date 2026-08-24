@@ -1,0 +1,52 @@
+/*
+ * The copy button on a post's own page.
+ *
+ * It sits on the end of the post's action row, after share, so it is sized and
+ * coloured to read as one more of X's own icons rather than as an addition:
+ * #71767b is what X uses for reply, repost and share, and #1d9bf0 is its
+ * hover blue.
+ */
+
+.myx-copy-btn__slot {
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding-left: 12px;
+}
+
+.myx-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #71767b;
+  cursor: pointer;
+}
+
+.myx-copy-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.myx-copy-btn:hover {
+  color: #1d9bf0;
+  background: rgba(29, 155, 240, 0.1);
+}
+
+/* Copied. Held for a moment, then back to normal. */
+.myx-copy-btn--done,
+.myx-copy-btn--done:hover {
+  color: #00ba7c;
+  background: transparent;
+}
+
+.myx-copy-btn--failed,
+.myx-copy-btn--failed:hover {
+  color: #f4212e;
+  background: transparent;
+}

@@ -2,12 +2,12 @@
   "manifest_version": 3,
   "name": "my-x",
   "version": "0.1.0",
-  "description": "Tag X accounts and drop them out of your For You feed.",
+  "description": "Tag X accounts to drop them out of your For You feed, and copy a post's text from its own page.",
   "permissions": ["storage"],
   "content_scripts": [
     {
       "matches": ["*://x.com/*", "*://twitter.com/*"],
-      "css": ["src/bar.css", "src/tagger.css"],
+      "css": ["src/bar.css", "src/tagger.css", "src/post.css"],
       "js": [
         "src/watch.js",
         "src/lib/power.js",
@@ -15,7 +15,8 @@
         "src/lib/bar.js",
         "src/lib/extract.js",
         "src/lib/tagger.js",
-        "src/pages/home.js"
+        "src/pages/home.js",
+        "src/pages/post.js"
       ],
       "run_at": "document_end",
       "all_frames": false

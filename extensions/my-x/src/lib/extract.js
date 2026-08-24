@@ -14,7 +14,7 @@
  * so a stale extension (edited on disk but not reloaded in chrome://extensions)
  * is obvious instead of looking like a selector bug.
  */
-MyX.EXTRACT_VERSION = 1;
+MyX.EXTRACT_VERSION = 2;
 
 const CELL = '[data-testid="cellInnerDiv"]';
 const ARTICLE = 'article[data-testid="tweet"]';
@@ -142,5 +142,105 @@ MyX.extract = {
    */
   menuButton(cell) {
     return cell.querySelector('[data-testid="caret"]');
+  },
+
+  /* ---- a post's own page ---------------------------------------------- */
+
+  /*
+   * The status id in the URL, or null anywhere else. This is also what keeps
+   * post.js off every other page.
+   */
+  statusId() {
+    const m = location.pathname.match(
+      /^\/[A-Za-z0-9_]{1,15}\/status\/(\d+)/
+    );
+    return m ? m[1] : null;
+  },
+
+  /*
+   * The one post the URL points at, or null.
+   *
+   * A status page is not one post: X renders the parents above it and the
+   * replies below it, each the same article. So the post is found by identity
+   * — its own status id — and never by position. No match means no button:
+   * a copy button on the wrong reply would hand you the wrong text and look
+   * like it worked.
+   */
+  focusedPost() {
+    const id = this.statusId();
+    if (!id) return null;
+
+    const root = this.timelineRoot();
+    if (!root) return null;
+
+    for (const article of root.querySelectorAll(ARTICLE)) {
+      for (const a of article.querySelectorAll('a[href*="/status/"]')) {
+        if (a.getAttribute("href").match(/\/status\/(\d+)/)?.[1] === id) {
+          return article;
+        }
+      }
+    }
+    return null;
+  },
+
+  /*
+   * Where the copy button goes: the post's action row — reply, repost, like,
+   * bookmark, share — and after the last of them.
+   *
+   * Not beside the "..." menu, which is where the tag button goes in the feed.
+   * That works in a timeline cell but not here: on a status page the right
+   * edge of the header is a 28px-wide flex column, so a button put there
+   * stacks above the "..." instead of sitting next to it. The action row is a
+   * real horizontal row with room in it, and "copy the text" belongs next to
+   * share anyway.
+   */
+  actionBar(article) {
+    return article.querySelector('[role="group"]');
+  },
+
+  /* Is anything post-shaped rendered yet? Tells "still loading" from "broke". */
+  hasArticles() {
+    return Boolean(this.timelineRoot()?.querySelector(ARTICLE));
+  },
+
+  /*
+   * A post's text, or null when it has none (an image on its own).
+   *
+   * Walked rather than read off textContent, for one reason: X renders emoji
+   * as twemoji images, <img alt="😬" src=".../1f62c.svg">, and textContent
+   * drops them silently. The alt is the character itself, so putting it back
+   * is enough.
+   *
+   * Line breaks need no work — X sets white-space: pre-wrap on the text and
+   * leaves the newlines in the text nodes (measured on the live page). An
+   * earlier version of this added a newline before every block-level element
+   * as well, which broke lines in the middle of a sentence: X wraps a @mention
+   * in an inline-flex div whose inner span is display:block.
+   *
+   * The quoted post inside a quote card has a tweetText of its own, so this
+   * takes the first one in document order — the outer post's.
+   */
+  postText(article) {
+    const node = article.querySelector('[data-testid="tweetText"]');
+    if (!node) return null;
+
+    let out = "";
+    const walk = document.createTreeWalker(
+      node,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT
+    );
+
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (n.nodeType === Node.TEXT_NODE) {
+        out += n.nodeValue;
+      } else if (n.tagName === "IMG") {
+        out += n.getAttribute("alt") || "";
+      } else if (n.tagName === "BR") {
+        out += "\n";
+      }
+    }
+
+    out = out.trim();
+    return out || null;
   },
 };
