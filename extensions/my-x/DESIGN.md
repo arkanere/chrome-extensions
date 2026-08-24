@@ -1,15 +1,17 @@
 # my-x
 
-A Chrome extension that makes X less annoying in two small ways. It lets you
-tag X accounts and drop everything they post out of your For You feed, and it
-gives you a one-click copy of a post's text on the post's own page.
+A Chrome extension that makes X less annoying in three small ways. It lets you
+tag X accounts and drop everything they post out of your For You feed, it
+gives you a one-click copy of a post's text on the post's own page, and it
+takes the "Discover more" block off the bottom of a post's replies.
 
 The filtering does not replace the feed or fight the algorithm — the algorithm
 stays exactly as it is, and we take out the part of it you have said you don't
 want.
 
-The two jobs are unrelated and stay unrelated. Filtering is a For You thing;
-copying is a status-page thing. Neither knows about the other.
+The jobs are unrelated and stay unrelated. Filtering is a For You thing;
+copying and the "Discover more" hide are status-page things. None of them
+knows about the others.
 
 ## Goals
 
@@ -18,6 +20,8 @@ copying is a status-page thing. Neither knows about the other.
 3. Flip a whole tag back on when you do want it, without untagging anything.
 4. Copy the text of a post from the post's own page, without selecting it by
    hand and dragging in the header, the timestamp and the action bar with it.
+5. End a post's replies where the replies end — no recommended posts from
+   across X pretending to be part of the conversation.
 
 ## Non-goals
 
@@ -57,10 +61,12 @@ my-x/
     bar.css              the extension's own bar, and room for it
     tagger.css           the tag button and its popup
     post.css             the copy button
+    discover.css         the "Discover more" hide rule
     watch.js             the tick: one observer, coalesced to 200ms
     pages/
       home.js            the filter pass          (For You)
       post.js            the copy button          (a post's own page)
+      discover.js        "Discover more" hidden   (a post's own page)
     lib/
       extract.js         DOM cell -> post object   (the fragile file)
       tags.js            handle -> tags, and which tags are hidden
@@ -88,7 +94,7 @@ first pass runs. Accepted.
 
 ## Where it applies
 
-Three different answers, one per piece.
+Four different answers, one per piece.
 
 **Filtering: For You only.** That means the home timeline (`/home` or `/`) **with the For You
 tab selected**. Following, search results, replies, notifications, lists and
@@ -99,6 +105,25 @@ Reading which tab is selected is a piece of DOM knowledge like any other, so it
 lives in `extract.js` with the rest. If it cannot tell which tab is on, it
 returns unknown and the extension stands down for that view rather than
 guessing — failing towards showing you everything.
+
+**"Discover more": a post's own page only.** It is a run of cells between two
+heading cells, and there is no wrapper element to hide, so `discover.js` walks
+the cell list and hides everything from the heading up to the next one. The
+two headings — "Discover more" and "Probable spam" — carry no testid and both
+labels are translated, so they are told apart by shape: only the
+recommendation heading has a subtitle line under it.
+
+The list is virtualized, and that costs one piece of state. Scrolled to the
+bottom, X unmounts the "Discover more" heading while its posts are still on
+screen — the boundary disappears and a pass that only read the cells in front
+of it would let them back in. So every id hidden inside the section is
+remembered for as long as you are on that post's page, and stays hidden. The
+set is dropped when the path changes.
+
+`discover.css` uses a class of its own rather than the filter's `.myx-hidden`,
+because `home.js` clears every `.myx-hidden` on any page that is not For You —
+a status page is exactly that — and the two passes would otherwise undo each
+other on every tick.
 
 **The copy button: a post's own page only.** `/<user>/status/<id>`, and on
 that page only the one post the URL names. Not the timeline: a copy button on

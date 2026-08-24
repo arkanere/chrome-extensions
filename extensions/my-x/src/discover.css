@@ -1,0 +1,12 @@
+/*
+ * The hide rule for "Discover more".
+ *
+ * Its own class, not the filter's .myx-hidden. home.js clears every
+ * .myx-hidden on any page that is not For You — a status page is exactly
+ * that — so sharing the class would mean the two passes undo each other on
+ * every tick.
+ */
+
+.myx-discover-hidden {
+  display: none !important;
+}

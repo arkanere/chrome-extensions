@@ -14,7 +14,7 @@
  * so a stale extension (edited on disk but not reloaded in chrome://extensions)
  * is obvious instead of looking like a selector bug.
  */
-MyX.EXTRACT_VERSION = 2;
+MyX.EXTRACT_VERSION = 3;
 
 const CELL = '[data-testid="cellInnerDiv"]';
 const ARTICLE = 'article[data-testid="tweet"]';
@@ -196,6 +196,24 @@ MyX.extract = {
    */
   actionBar(article) {
     return article.querySelector('[role="group"]');
+  },
+
+  /*
+   * A section heading cell, or null for anything else.
+   *
+   * The reply list on a status page ends with headed sections: "Discover more"
+   * (posts X recommends, unrelated to this one) and "Probable spam" (replies
+   * X ranked down). Neither heading carries a testid and both labels are
+   * translated, so they are told apart by shape rather than by text: the
+   * recommendation heading is the only one with a second line under it
+   * ("Sourced from across X").
+   *
+   * Returns "recommended" for that one, "other" for any other heading.
+   */
+  headingKind(cell) {
+    if (cell.querySelector(ARTICLE)) return null;
+    if (!cell.querySelector('h2[role="heading"]')) return null;
+    return cell.querySelectorAll("span").length > 1 ? "recommended" : "other";
   },
 
   /* Is anything post-shaped rendered yet? Tells "still loading" from "broke". */

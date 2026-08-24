@@ -2,12 +2,17 @@
   "manifest_version": 3,
   "name": "my-x",
   "version": "0.1.0",
-  "description": "Tag X accounts to drop them out of your For You feed, and copy a post's text from its own page.",
+  "description": "Tag X accounts to drop them out of your For You feed, copy a post's text from its own page, and hide the \"Discover more\" block under a post.",
   "permissions": ["storage"],
   "content_scripts": [
     {
       "matches": ["*://x.com/*", "*://twitter.com/*"],
-      "css": ["src/bar.css", "src/tagger.css", "src/post.css"],
+      "css": [
+        "src/bar.css",
+        "src/tagger.css",
+        "src/post.css",
+        "src/discover.css"
+      ],
       "js": [
         "src/watch.js",
         "src/lib/power.js",
@@ -16,7 +21,8 @@
         "src/lib/extract.js",
         "src/lib/tagger.js",
         "src/pages/home.js",
-        "src/pages/post.js"
+        "src/pages/post.js",
+        "src/pages/discover.js"
       ],
       "run_at": "document_end",
       "all_frames": false
