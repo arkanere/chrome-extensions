@@ -370,10 +370,19 @@ every pixel of it. Passive, and coalesced into the same 200ms tick.
 
 **One global scope.** Every content script file shares one scope, so a
 top-level `function save()` in two files is not two functions — the later file
-silently replaces the earlier one. `budget.js` had exactly that collision with
-`tags.js` and spent its first day writing to the tags keys and counting
-nothing. Hence `saveBudget()`. Top-level names in this extension have to be
-unique across all of `src/`, and that is worth checking when adding a file.
+silently replaces the earlier one — and a duplicate `const` or `let` is worse,
+because it throws at load and takes that whole file with it, leaving the
+others running against a `MyX` piece that never got assigned.
+
+Both have happened here in one day. `budget.js` declared a `save()` that
+`tags.js` replaced, so the budget wrote to the tags keys, counted nothing, and
+— because the first pass runs before `tags.load()` returns — wrote an empty
+object over a day's tagging. The guard added against that was a `let loaded`
+in both files, which threw and stopped `tags.js` loading at all.
+
+Hence `saveBudget()`, `tagsLoaded`, `budgetLoaded`, and `sh
+tools/scope-check.sh`, which fails if any top-level name is declared in more
+than one file. Run it before committing a new file.
 
 **The state**, one key in `chrome.storage.local`:
 

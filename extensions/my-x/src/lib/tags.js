@@ -31,10 +31,10 @@ let hidden = new Set();
  * The name collision is fixed; this is the guard that makes the whole class
  * of mistake harmless.
  */
-let loaded = false;
+let tagsLoaded = false;
 
 function save() {
-  if (!loaded) return;
+  if (!tagsLoaded) return;
   chrome.storage.local.set({
     [TAGS_KEY]: byHandle,
     [HIDDEN_KEY]: [...hidden],
@@ -50,7 +50,7 @@ MyX.tags = {
     const stored = await chrome.storage.local.get([TAGS_KEY, HIDDEN_KEY]);
     byHandle = stored[TAGS_KEY] || {};
     hidden = new Set(stored[HIDDEN_KEY] || []);
-    loaded = true;
+    tagsLoaded = true;
   },
 
   tagsFor(handle) {
