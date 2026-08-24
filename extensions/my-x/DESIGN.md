@@ -335,14 +335,27 @@ way to `50` would otherwise block the feed under your hands.
 The feed is infinite, and infinite is the hook. Tagging takes out the part of
 it you already know you do not want; the budget is about volume.
 
-**What counts as a view.** A post cell at least half in the viewport for one
-continuous second. Not "rendered" — X renders far ahead of what you can see,
-so that would spend the day in one screenful — and not "scrolled past", or a
-single flick of the wheel would eat thirty posts. One `IntersectionObserver`
-at `threshold: 0.5`, a `setTimeout` on entry, cleared on exit.
+**What counts as a view.** A post half on screen — half of the post, or half
+of the window if the post is taller than it — for one second. Not "rendered",
+because X renders far ahead of what you can see, and not "scrolled past", or
+one flick of the wheel would spend the day.
 
-Counting is per `postId`, so scrolling back over a post you have already read
-is free.
+The second is **added up, not continuous**, and the time is added to the post
+*id*, not to its DOM node. Both of those were learned the hard way: a timer
+hung on a cell never fired at all, because X destroys and recreates cells as
+you scroll and the node is swapped out from under the post you are reading.
+Reading while the wheel is still turning has the same problem, on a smaller
+scale.
+
+So the `IntersectionObserver` runs at `threshold: 0` and does one job — say
+which cells are worth measuring. A sampler every 250ms decides which of those
+are actually being read, from their boxes, and adds the time. Measuring from
+the box rather than from the observer's ratio is what gets long posts right:
+half of a post taller than the window can never be on screen, and those are
+the posts you spend the most time on.
+
+Nothing accrues while the tab is in the background. A feed left open behind
+your work is not a feed you are reading.
 
 **Why home.js and not its own module.** The pass already walks every cell and
 already has its post object, so it is the one place that knows a cell's id
