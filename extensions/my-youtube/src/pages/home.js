@@ -149,8 +149,9 @@ function pass() {
       continue;
     }
 
-    /* clean.css already hides these; there is nothing to tag or count. */
-    if (video.isShort) continue;
+    /* Still being built, or a Short that clean.css has already hidden.
+     * Nothing to tag, nothing to count, and not a failure either. */
+    if (video.pending || video.isShort) continue;
 
     const hide = MyYT.tags.isHidden(video.channelId);
     card.classList.toggle(HIDDEN_CLASS, hide);

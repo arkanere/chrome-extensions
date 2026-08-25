@@ -29,6 +29,13 @@
  * Our own element inside #contents, so the rules above do not touch it. It
  * sits after the cards you spent the day on, which are still there and still
  * watchable.
+ *
+ * From here down, colours are stated outright and switched on html[dark],
+ * never taken from YouTube's --yt-spec-* variables. The popup is appended to
+ * <body>, outside ytd-app, where those variables are not defined — a popup
+ * that asked for them came out white on a black page. The panel is inside the
+ * grid and could read them, but it follows the same rule so there is only one
+ * to remember.
  */
 .myyt-panel {
   flex-basis: 100%;
@@ -37,7 +44,11 @@
   padding: 28px 24px;
   text-align: center;
   font-family: "Roboto", "Arial", sans-serif;
-  color: var(--yt-spec-text-primary, #0f0f0f);
+  color: #0f0f0f;
+}
+
+html[dark] .myyt-panel {
+  color: #f1f1f1;
 }
 
 .myyt-panel__line {
@@ -85,7 +96,7 @@
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--yt-spec-text-secondary, #606060);
+  color: #606060;
   font-family: "Roboto", "Arial", sans-serif;
   font-size: 13px;
   line-height: 1;
@@ -98,6 +109,10 @@
   background: rgba(0, 0, 0, 0.06);
 }
 
+html[dark] .myyt-tag-btn {
+  color: #aaa;
+}
+
 html[dark] .myyt-tag-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
@@ -106,7 +121,11 @@ html[dark] .myyt-tag-btn:hover {
 .myyt-tag-btn--tagged {
   opacity: 1;
   font-weight: 700;
-  color: var(--yt-spec-call-to-action, #065fd4);
+  color: #065fd4;
+}
+
+html[dark] .myyt-tag-btn--tagged {
+  color: #3ea6ff;
 }
 
 /* --- the tag popup ------------------------------------------------------ */
@@ -119,8 +138,8 @@ html[dark] .myyt-tag-btn:hover {
   box-sizing: border-box;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 10px;
-  background: var(--yt-spec-base-background, #fff);
-  color: var(--yt-spec-text-primary, #0f0f0f);
+  background: #fff;
+  color: #0f0f0f;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
   font-family: "Roboto", "Arial", sans-serif;
   font-size: 12px;
@@ -128,6 +147,9 @@ html[dark] .myyt-tag-btn:hover {
 
 html[dark] .myyt-popup {
   border-color: rgba(255, 255, 255, 0.15);
+  background: #282828;
+  color: #f1f1f1;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
 }
 
 .myyt-popup__head {

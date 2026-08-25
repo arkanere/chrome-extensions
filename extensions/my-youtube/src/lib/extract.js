@@ -84,6 +84,18 @@ MyYT.menuHost = function (card) {
 
 MyYT.extract = function (card) {
   try {
+    /*
+     * A card YouTube has put in the grid but not filled in yet. It holds no
+     * links at all, which is not something a finished card ever is, and it
+     * gets its content a frame or two later.
+     *
+     * Told apart from breakage rather than lumped in with it: a card that has
+     * a /watch link but nothing we can read *is* breakage and must stay loud,
+     * while a card that is still being built would otherwise put a red count
+     * in the bar on every page load and every scroll.
+     */
+    if (!card.querySelector("a[href]")) return { pending: true };
+
     /* A Shorts card links to /shorts/, never to /watch. clean.css already
      * hides these, but say so rather than counting it as a parse failure. */
     if (card.querySelector('a[href^="/shorts/"]')) return { isShort: true };
