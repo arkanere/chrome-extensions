@@ -1,0 +1,166 @@
+/*
+ * The filter, the freeze, the tag button and its popup.
+ *
+ * Separate from clean.css because none of this is a static hide: every rule
+ * here waits for a class the pass in home.js puts on. A tagged card can
+ * therefore be briefly visible before the first pass runs, which is accepted —
+ * nothing can be hidden statically when the decision needs to know who made
+ * the video.
+ */
+
+/* --- hidden, and frozen ------------------------------------------------- */
+
+/*
+ * Hidden by a tag, and hidden past the day's limit. Two classes rather than
+ * one because they are undone at different times: a tag chip switching back on
+ * clears .myyt-hidden while the grid may still be frozen, and raising the
+ * limit clears .myyt-frozen while tagged cards must stay gone.
+ *
+ * display:none, never removal. The cards stay exactly where YouTube put them.
+ */
+.myyt-hidden,
+.myyt-frozen {
+  display: none !important;
+}
+
+/* --- the panel over a frozen grid --------------------------------------- */
+
+/*
+ * Our own element inside #contents, so the rules above do not touch it. It
+ * sits after the cards you spent the day on, which are still there and still
+ * watchable.
+ */
+.myyt-panel {
+  flex-basis: 100%;
+  margin: 40px auto;
+  max-width: 420px;
+  padding: 28px 24px;
+  text-align: center;
+  font-family: "Roboto", "Arial", sans-serif;
+  color: var(--yt-spec-text-primary, #0f0f0f);
+}
+
+.myyt-panel__line {
+  font-size: 15px;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.myyt-panel__sub {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.55;
+}
+
+/* The same control as the bar's, given room to be read here. */
+.myyt-panel .myyt-budget {
+  margin: 20px 0 0;
+  justify-content: center;
+  font-size: 13px;
+  opacity: 1;
+}
+
+.myyt-panel .myyt-budget__limit {
+  width: 56px;
+  font-size: 13px;
+  border-color: currentColor;
+  opacity: 0.6;
+}
+
+/* --- the tag button ----------------------------------------------------- */
+
+/*
+ * Positioned, not inserted into a row. YouTube's metadata block is a flex row
+ * of avatar, text and the "..." button, and the "..." is itself absolutely
+ * positioned in the top-right corner. There is no row to join, so this sits
+ * under it, where the channel name and view count leave the right-hand side
+ * empty.
+ */
+.myyt-tag-btn {
+  position: absolute;
+  top: 36px;
+  right: -6px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--yt-spec-text-secondary, #606060);
+  font-family: "Roboto", "Arial", sans-serif;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.myyt-tag-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html[dark] .myyt-tag-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* A channel that already carries tags, so you can see it at a glance. */
+.myyt-tag-btn--tagged {
+  opacity: 1;
+  font-weight: 700;
+  color: var(--yt-spec-call-to-action, #065fd4);
+}
+
+/* --- the tag popup ------------------------------------------------------ */
+
+.myyt-popup {
+  position: fixed;
+  z-index: 10000;
+  width: 260px;
+  padding: 12px;
+  box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  background: var(--yt-spec-base-background, #fff);
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  font-family: "Roboto", "Arial", sans-serif;
+  font-size: 12px;
+}
+
+html[dark] .myyt-popup {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.myyt-popup__head {
+  margin-bottom: 8px;
+  font-weight: 500;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.myyt-popup__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.myyt-popup__chips:not(:empty) {
+  margin-bottom: 10px;
+}
+
+.myyt-popup__input {
+  width: 100%;
+  padding: 5px 8px;
+  box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+html[dark] .myyt-popup__input {
+  border-color: rgba(255, 255, 255, 0.25);
+}

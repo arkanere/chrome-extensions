@@ -16,8 +16,6 @@ MyYT.route = function (test, run) {
 };
 
 function dispatch() {
-  if (!MyYT.power.enabled) return;
-
   const path = location.pathname;
   for (const r of MyYT.routes) {
     if (!r.test(path)) continue;
@@ -31,11 +29,14 @@ function dispatch() {
 
 /*
  * Deferred by a turn so the page modules loaded after this file have
- * registered themselves first, then waits for the stored on/off state — no
- * route may run before we know whether the extension is switched on. Both are
- * a few milliseconds; the hide rules in clean.css are already applied.
+ * registered themselves first. A few milliseconds; the hide rules in clean.css
+ * are already applied.
+ *
+ * This router is only for things that happen once per navigation — currently
+ * the watch page's resize. Anything that has to keep up with a feed hangs off
+ * the tick in tick.js instead.
  */
-setTimeout(() => MyYT.power.load().then(dispatch), 0);
+setTimeout(dispatch, 0);
 
 /* Fires on document and bubbles, so window catches every SPA navigation. */
 window.addEventListener("yt-navigate-finish", dispatch);

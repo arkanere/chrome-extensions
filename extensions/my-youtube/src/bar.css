@@ -52,33 +52,115 @@ ytd-app #page-manager {
   opacity: 0.55;
 }
 
-/* The off switch, kept at the far right end of the bar. */
-.myyt-bar__power {
-  margin-left: auto;
-  padding: 3px 10px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
+/* --- status ------------------------------------------------------------ */
+
+.myyt-bar__status {
+  opacity: 0.75;
+}
+
+.myyt-bar__status--error {
+  color: #c00;
+  opacity: 1;
+  font-weight: 500;
+}
+
+html[dark] .myyt-bar__status--error {
+  color: #ff8a80;
+}
+
+.myyt-bar__dismiss {
+  border: 0;
   background: transparent;
   color: inherit;
-  font-family: inherit;
-  font-size: 11px;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
   opacity: 0.6;
   cursor: pointer;
 }
 
-html[dark] .myyt-bar__power {
+.myyt-bar__dismiss:hover {
+  opacity: 1;
+}
+
+/* --- tag chips ---------------------------------------------------------- */
+
+.myyt-bar__tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+/*
+ * One chip style for the bar and for the popup, because they are the same
+ * thing: a tag you can press. Bright means the tag is showing, dim means it is
+ * switched off.
+ */
+.myyt-chip {
+  padding: 2px 9px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.05);
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+html[dark] .myyt-chip {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.myyt-chip--off {
+  opacity: 0.4;
+  background: transparent;
+}
+
+.myyt-chip:hover {
+  opacity: 1;
+  border-color: currentColor;
+}
+
+/* In the popup: a tag this channel already carries, so pressing it removes. */
+.myyt-chip--on {
+  border-color: currentColor;
+  font-weight: 500;
+}
+
+/* --- the daily limit ---------------------------------------------------- */
+
+.myyt-budget {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.myyt-budget__limit {
+  width: 46px;
+  padding: 1px 4px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  text-align: center;
+}
+
+html[dark] .myyt-budget__limit {
   border-color: rgba(255, 255, 255, 0.25);
 }
 
-.myyt-bar__power:hover {
-  opacity: 1;
-}
-
-/* Switched off: the bar stays, but says so rather than looking active. */
-#myyt-bar.myyt-bar--off .myyt-bar__name {
-  opacity: 0.35;
-}
-
-#myyt-bar.myyt-bar--off .myyt-bar__power {
-  opacity: 1;
+/* Chrome's spinner takes half the field and is no use for a number you set
+ * once. */
+.myyt-budget__limit::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
 }
