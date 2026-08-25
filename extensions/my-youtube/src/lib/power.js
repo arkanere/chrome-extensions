@@ -13,8 +13,8 @@
  * clean.css hangs off data-myyt="on" on <html>. Reading storage is async but
  * hiding must be in place before first paint, so the attribute is set
  * synchronously here and only taken off again if storage says otherwise. Being
- * briefly clean while switched off is harmless; the reverse would flash the
- * homepage grid at you.
+ * briefly clean while switched off is harmless; the reverse would flash a
+ * page we mean to have cleaned.
  */
 
 const OFF_KEY = "disabled";
@@ -37,10 +37,11 @@ MyYT.power = {
   },
 
   /*
-   * Reload rather than undo. Switching off mid-session would mean putting back
-   * every card subs.js moved and every class it stamped; switching on would
-   * mean rebuilding from a grid we never watched. A reload gets both for free,
-   * and this is a button you press about twice a year.
+   * Reload rather than flip in place. Taking the attribute off would un-hide
+   * everything, but the watch page would keep the player size it measured
+   * while the related column was hidden, and switching back on would not
+   * re-run the route. A reload gets both right for free, and this is a button
+   * you press about twice a year.
    */
   async set(on) {
     await chrome.storage.local.set({ [OFF_KEY]: !on });

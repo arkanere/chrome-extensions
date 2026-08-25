@@ -13,17 +13,8 @@
  * Every rule is gated on data-myyt="on", which power.js sets on <html>. A
  * stylesheet listed in the manifest cannot be un-injected, so the off switch
  * takes the attribute away instead and all of this stops matching at once.
- * feed.css needs no such gate: it only styles elements subs.js creates, and
- * with the extension off subs.js never runs. bar.css is deliberately not
- * gated — the bar is the only way back on.
+ * bar.css is deliberately not gated — the bar is the only way back on.
  */
-
-/* --- Homepage ---------------------------------------------------------- */
-
-/* home.js redirects away from /, but the grid must not flash first. */
-html[data-myyt="on"] ytd-browse[page-subtype="home"] {
-  display: none !important;
-}
 
 /* --- Shorts ------------------------------------------------------------ */
 

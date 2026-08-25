@@ -52,44 +52,9 @@ ytd-app #page-manager {
   opacity: 0.55;
 }
 
-.myyt-bar__status {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.85;
-}
-
-.myyt-bar__status--error {
-  color: #d93025;
-  opacity: 1;
-}
-
-html[dark] .myyt-bar__status--error {
-  color: #ff8a80;
-}
-
-.myyt-bar__dismiss {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  opacity: 0.5;
-  font-size: 16px;
-  line-height: 1;
-  padding: 2px 6px;
-  cursor: pointer;
-}
-
-.myyt-bar__dismiss:hover {
-  opacity: 1;
-}
-
-/*
- * The off switch, kept at the far right and away from the dismiss button so
- * clearing a message cannot turn the extension off by accident.
- */
+/* The off switch, kept at the far right end of the bar. */
 .myyt-bar__power {
-  margin-left: 4px;
+  margin-left: auto;
   padding: 3px 10px;
   border: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: 12px;
@@ -110,8 +75,7 @@ html[dark] .myyt-bar__power {
 }
 
 /* Switched off: the bar stays, but says so rather than looking active. */
-#myyt-bar.myyt-bar--off .myyt-bar__name,
-#myyt-bar.myyt-bar--off .myyt-bar__status {
+#myyt-bar.myyt-bar--off .myyt-bar__name {
   opacity: 0.35;
 }
 

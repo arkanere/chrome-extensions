@@ -2,21 +2,17 @@
   "manifest_version": 3,
   "name": "my-youtube",
   "version": "0.1.0",
-  "description": "A quiet, subscription-first YouTube.",
+  "description": "A quieter YouTube: no Shorts, no up-next column, no endscreen bait.",
   "permissions": ["storage"],
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*"],
-      "css": ["src/clean.css", "src/feed.css", "src/bar.css"],
+      "css": ["src/clean.css", "src/bar.css"],
       "js": [
         "src/router.js",
         "src/lib/power.js",
         "src/lib/bar.js",
-        "src/lib/extract.js",
-        "src/lib/seen.js",
-        "src/pages/home.js",
-        "src/pages/watch.js",
-        "src/pages/subs.js"
+        "src/pages/watch.js"
       ],
       "run_at": "document_start",
       "all_frames": false
