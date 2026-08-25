@@ -118,15 +118,25 @@ function openTagPopup(button, channelId, channelName) {
   input.focus();
 }
 
-/* A tag changed: redraw the feed, the bar's chips, and the popup itself. */
+/*
+ * A tag changed: redraw the feed, the bar's chips, and the popup itself.
+ *
+ * Unless the card it is anchored to has just been hidden by the tag you added
+ * — a hidden button has no box, so a reopened popup would land in the top-left
+ * corner of the screen, over the bar. There is nothing left to point at, so it
+ * closes instead.
+ */
 function applyTag(button, channelId, channelName) {
   MyYT.bar.refreshTags();
   MyYT.tickNow();
-  if (tagPopupFor === channelId && document.contains(button)) {
-    openTagPopup(button, channelId, channelName);
-  } else {
-    closeTagPopup();
-  }
+
+  const anchored =
+    tagPopupFor === channelId &&
+    document.contains(button) &&
+    button.getBoundingClientRect().height > 0;
+
+  if (anchored) openTagPopup(button, channelId, channelName);
+  else closeTagPopup();
 }
 
 MyYT.tagger = {
