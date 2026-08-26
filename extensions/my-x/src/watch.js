@@ -76,5 +76,6 @@ setTimeout(async () => {
   await MyX.budget.load();
   await MyX.tags.load();
   MyX.bar.refreshTags();
+  MyX.bar.refreshBudget();
   MyX.tickNow();
 }, 0);

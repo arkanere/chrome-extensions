@@ -68,6 +68,10 @@ function onScreen(cell) {
  * A spent day. The cells are hidden by budget.css rather than removed, and one
  * panel of our own goes in the timeline root to say why — with the limit field
  * in it, so raising it is one place and not a hunt back up to the bar.
+ *
+ * Nothing under it. The limit ends the day, and a list of what you already
+ * read would be a second feed to scroll after the first one stopped. A post
+ * you want to keep is one you bookmark while you are looking at it.
  */
 function block(root) {
   root.classList.add(BLOCKED_CLASS);

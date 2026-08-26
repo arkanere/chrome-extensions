@@ -14,6 +14,24 @@
   display: none !important;
 }
 
+/*
+ * The spacer.
+ *
+ * X sizes the cell holder to the cells it is holding — an inline min-height of
+ * some thousands of pixels — and hiding a cell does not shrink it. Left alone,
+ * the blocked timeline is empty but still six thousand pixels tall and the
+ * panel sits at the bottom of it, off the screen.
+ *
+ * Said here and not in JS, and that is the whole point. A stylesheet
+ * !important beats an inline style without writing to the DOM. Writing it from
+ * JS was tried and froze the tab: X puts its own value back on every render,
+ * our observer sees that as a change and writes again, and the two sides never
+ * stop. Never write to a property the page itself owns.
+ */
+[data-testid="primaryColumn"].myx-blocked div:has(> [data-testid="cellInnerDiv"]) {
+  min-height: 0 !important;
+}
+
 .myx-panel {
   margin: 48px auto;
   max-width: 420px;

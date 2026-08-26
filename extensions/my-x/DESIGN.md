@@ -394,6 +394,21 @@ Ids rather than a bare count, for two reasons: the same post open in two tabs
 must count once, and a reload must not hand you a fresh day. The list is
 bounded by the limit, so it stays small.
 
+Ids and nothing else — no handle, no text, no time. The budget records that a
+post was spent, not where it was or what it said, because there is nothing to
+go back to.
+
+**No revisiting.** A spent day shows the panel and nothing under it. A list of
+the hundred posts you just read was built and then taken out again: it is a
+second feed, somewhere to keep scrolling after the timeline has stopped, which
+is the behaviour the limit exists to end. It is also an uncapped tail on a
+capped day, because a post's own page is deliberately never counted and never
+blocked.
+
+The save mechanism is X's own bookmark. That is the point rather than a
+shortfall: it makes you decide while you are looking at the post, not
+afterwards from a list.
+
 **The day boundary** is local midnight — the one that matters is yours, not
 UTC. The date is checked on every read, not only at load, because a tab can
 sit open across it.
@@ -430,6 +445,8 @@ is one chip or one number.
 
 Written down so they are choices rather than surprises later:
 
+- A post you did not bookmark is gone when the day is spent — the extension
+  keeps no way back to it (see "The daily budget").
 - The long tail leaks forever (see "The one thing this cannot do").
 - The daily limit is a line, not a lock (see "The daily budget").
 - A tagged post can flash before the first pass, because nothing can be hidden

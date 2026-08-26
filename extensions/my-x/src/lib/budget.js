@@ -14,6 +14,10 @@
  * tabs must count once, and a reload must not lose the day. The list is
  * bounded by the limit, so it stays small.
  *
+ * Ids and nothing else. We keep no address and no copy of the post, because
+ * there is nothing to go back to: a spent day is spent, and a post worth
+ * keeping is one you bookmarked while you were looking at it.
+ *
  * Read synchronously through count()/reached() after an awaited load(),
  * because the pass has to decide with no chance to await.
  *
@@ -46,7 +50,11 @@ function adopt(record) {
   const r = record || {};
   limit = clampLimit(r.limit);
   day = r.date;
-  ids = new Set(day === today() ? r.ids || [] : []);
+  /* `posts` is the shape the revisit list used, and a day counted under it is
+   * still read so shipping this does not hand anyone a fresh day. Delete once
+   * no tab can still be holding one. */
+  const stored = r.posts ? r.posts.map((p) => p.id) : r.ids || [];
+  ids = new Set(day === today() ? stored : []);
 }
 
 function clampLimit(n) {
