@@ -238,6 +238,12 @@ account on screen. Removing the last hidden tag brings it back.
 Because cells are recycled, the button is stamped per pass like everything
 else, and the popup closes on scroll rather than trying to follow its post.
 
+It has one anchor, the `...` menu, and a post it cannot be placed on is
+counted and reported in the bar — the same rule as an unparseable cell. The
+copy button reports the same way when the action row is not where it should
+be. Either one failing means the selector has gone stale, and a button that
+just stops appearing is the silent breakage this extension exists not to have.
+
 ## The copy button
 
 On a post's own page, one small button on the end of the post's action row —
