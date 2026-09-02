@@ -116,13 +116,19 @@ MyX.tagger = {
   /*
    * Put a button on this cell if it has none, and point it at this post. Cheap
    * enough to call for every visible cell on every pass.
+   *
+   * Returns false when there was nowhere to put it — the "..." menu is the
+   * one anchor we have, and if X renames that testid the button would simply
+   * stop appearing. The pass counts the falses and puts them in the bar, for
+   * the same reason readCell's nulls are counted: a feature that quietly
+   * stops existing is worse than one that says it broke.
    */
   stamp(cell, post) {
     let button = cell.querySelector("." + BTN_CLASS);
 
     if (!button) {
       const menu = MyX.extract.menuButton(cell);
-      if (!menu) return;
+      if (!menu) return false;
 
       button = document.createElement("button");
       button.className = BTN_CLASS;
@@ -144,6 +150,7 @@ MyX.tagger = {
       ? `@${post.author}: ${tags.join(", ")}`
       : `Tag @${post.author}`;
     button.classList.toggle("myx-tag-btn--tagged", tags.length > 0);
+    return true;
   },
 
   /* Off, or off For You: take every button back off again. */

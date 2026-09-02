@@ -137,6 +137,7 @@ function pass() {
   }
 
   let failed = 0;
+  let unstamped = 0;
 
   for (const cell of root.querySelectorAll(MyX.extract.CELL)) {
     /* Cells also carry the composer, prompts and dividers. Not a failure. */
@@ -154,7 +155,7 @@ function pass() {
     if (hide) {
       hiddenIds.add(post.postId);
     } else {
-      if (filtering) MyX.tagger.stamp(cell, post);
+      if (filtering && !MyX.tagger.stamp(cell, post)) unstamped++;
       if (onScreen(cell)) MyX.budget.saw(post.postId);
     }
   }
@@ -162,6 +163,19 @@ function pass() {
   if (failed) {
     MyX.bar.say(
       `could not read ${failed} posts (extract v${MyX.EXTRACT_VERSION})`,
+      true
+    );
+    return;
+  }
+
+  /*
+   * A post we could read but could not put the tag button on. Reported second
+   * because it is the smaller breakage: the filtering still works, you just
+   * cannot tag anything new from this feed.
+   */
+  if (unstamped) {
+    MyX.bar.say(
+      `no tag button on ${unstamped} posts (extract v${MyX.EXTRACT_VERSION})`,
       true
     );
     return;

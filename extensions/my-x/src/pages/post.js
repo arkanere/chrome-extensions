@@ -54,13 +54,18 @@ function flashCopy(button, ok) {
  * Put the button on this post if it has none, and re-point it at the text as
  * it reads right now. Re-read every pass rather than closed over once: X can
  * rewrite the article under us — a "Show more" expanding is exactly that.
+ *
+ * Returns false when the action row is not where we expect it. Said out loud
+ * by the caller rather than swallowed: we found the post and we have its
+ * text, so the only thing missing is the place to hang the button, and that
+ * is a selector that has gone stale.
  */
 function stampCopy(article, text) {
   let button = article.querySelector("." + COPY_CLASS);
 
   if (!button) {
     const bar = MyX.extract.actionBar(article);
-    if (!bar) return;
+    if (!bar) return false;
 
     button = document.createElement("button");
     button.className = COPY_CLASS;
@@ -93,6 +98,7 @@ function stampCopy(article, text) {
   }
 
   button.dataset.myxText = text;
+  return true;
 }
 
 function copyPass() {
@@ -126,7 +132,12 @@ function copyPass() {
     return;
   }
 
-  stampCopy(article, text);
+  if (!stampCopy(article, text)) {
+    MyX.bar.say(
+      `could not place the copy button (extract v${MyX.EXTRACT_VERSION})`,
+      true
+    );
+  }
 }
 
 MyX.onTick(copyPass);
