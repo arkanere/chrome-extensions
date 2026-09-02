@@ -164,3 +164,26 @@ html[dark] .myyt-budget__limit {
   appearance: none;
   margin: 0;
 }
+
+/* --- fullscreen --------------------------------------------------------- */
+
+/*
+ * In fullscreen there is one thing on the screen and it is the video. The bar
+ * goes, and so does the room made for it: zeroing --myyt-bar-h puts the
+ * masthead and #page-manager back where YouTube wants them, which is what the
+ * page returns to when fullscreen ends.
+ *
+ * YouTube fullscreens <html> itself, which is why the bar was still there: it
+ * is a child of the fullscreen element, not a sibling being hidden by it. So
+ * the rule that matters is html:fullscreen. The :has() half is only insurance
+ * for the day YouTube fullscreens the player instead.
+ */
+html:fullscreen,
+html:has(:fullscreen) {
+  --myyt-bar-h: 0px;
+}
+
+html:fullscreen #myyt-bar,
+html:has(:fullscreen) #myyt-bar {
+  display: none;
+}
