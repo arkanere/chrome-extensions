@@ -1,8 +1,8 @@
 # PDF Reader
 
-Opens PDFs in its own viewer and reads them aloud with the neural voices Chrome
-already has on your machine, highlighting each word as it is spoken. Click any
-word to start reading from there.
+Opens PDFs in its own viewer and reads them aloud with Kokoro-82M, a neural voice
+that runs on your own GPU, highlighting each word as it is spoken. Click any word
+to start reading from there.
 
 Nothing is uploaded. Synthesis happens locally, so it works offline and your
 documents never leave the browser.
@@ -13,8 +13,9 @@ documents never leave the browser.
   lands in this viewer instead. Pages render in a scrolling column and the text
   stays selectable, so it works as a plain PDF viewer even if you never press
   play.
-- **Reads aloud** with Chrome's built-in `(Natural)` voices: local neural
-  synthesis, no model shipped, no network call.
+- **Reads aloud** with Kokoro-82M running on this machine — nine voices, all of
+  which report per-word timing. Chrome's own `(Natural)` voices remain in the
+  picker as a fallback.
 - **Highlights as it speaks** — the current word in orange, the sentence around
   it in a lighter band — and scrolls to follow, but only when the word has
   actually left the visible area.
@@ -50,16 +51,22 @@ Three ways in, because interception is best-effort:
 
 ## Voices
 
-The picker lists only voices that report word timing, since the rest cannot be
-highlighted. On macOS that means the seven `Google … (Natural)` voices, grouped
-above the system ones.
+Nine Kokoro voices are grouped first, and one of them is the default. They run
+here, on the GPU, from files inside this folder — so they sound the same on every
+machine and they always report per-word timing, which is what the highlight needs.
+Run `sh fetch-assets.sh` in the repo root once to install them; see the root
+README.
 
-If no such voice exists on your machine, the extension still plays through
-whatever voice is available and tells you why nothing is highlighted — audio
-without highlighting beats no audio.
+Chrome's own voices stay below them. If the model is missing or will not start,
+the reader falls back to `chrome.tts`, says so once, and keeps reading. The picker
+still lists only voices that report word timing, since the rest cannot be
+highlighted — audio without highlighting beats no audio, so a voice you have
+already chosen is never hidden from you.
 
-The Natural voices download once (~12-15 MB per language) via Chrome's own
-component updater and are cached locally after that.
+Kokoro is a synthesiser rather than a player: it hands back finished audio plus a
+table of word timings, seconds after being asked. That is why the reader
+synthesises three sentences ahead of the one you are hearing, and why it starts
+loading the model when the viewer opens rather than when you press play.
 
 ## What it will not do
 

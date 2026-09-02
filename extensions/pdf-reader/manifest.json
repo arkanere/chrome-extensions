@@ -2,9 +2,12 @@
   "manifest_version": 3,
   "name": "PDF Reader",
   "version": "0.1.0",
-  "description": "Open PDFs in a viewer that can read them aloud with Chrome's local neural voices.",
+  "description": "Open PDFs in a viewer that reads them aloud, word by word, with a neural voice that runs on this machine.",
   "permissions": ["declarativeNetRequest", "contextMenus", "storage", "tts"],
   "host_permissions": ["*://*/*", "file://*/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "background": {
     "service_worker": "background.js"
   },

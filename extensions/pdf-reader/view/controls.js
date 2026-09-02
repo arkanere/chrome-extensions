@@ -18,11 +18,16 @@ function button(label, title, action) {
   return el;
 }
 
-// The Natural voices are the ones this extension is built around (2.2), and on
-// this machine they arrive buried among ~190 macOS system voices. Two groups is
-// the whole of the sorting.
+// Three groups now, in the order you would want them. Kokoro's voices come
+// first: they run on this machine, they always report word timing, and they are
+// the same nine everywhere, which is the point of shipping the model. The
+// Natural voices are what this extension was originally built around (2.2), and
+// on this machine they arrive buried among ~190 macOS system voices. A voice
+// reports itself as premium only if it is Kokoro's — speech/adapter never sets
+// the field, so chrome.tts's voices sort exactly as they always did.
 function optionsFor(voices, currentId) {
   const seen = new Set();
+  const neural = [];
   const natural = [];
   const system = [];
 
@@ -30,9 +35,11 @@ function optionsFor(voices, currentId) {
     if (seen.has(voice.id)) continue;
     if (!voice.supportsWordEvents && voice.id !== currentId) continue;
     seen.add(voice.id);
-    (voice.label.includes("(Natural)") ? natural : system).push(voice);
+    if (voice.premium) neural.push(voice);
+    else (voice.label.includes("(Natural)") ? natural : system).push(voice);
   }
   return [
+    ["Neural voices", neural],
     ["Natural voices", natural],
     ["System voices", system],
   ].filter(([, list]) => list.length > 0);

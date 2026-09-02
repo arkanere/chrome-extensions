@@ -46,12 +46,17 @@ drop the current utterance and re-speak the sentence from its start, so there is
 no half-spoken sentence to be confused by. **Esc** stops the voice before it
 closes the reader.
 
-Speech uses Chrome's own `chrome.tts` voices. The picker lists only voices that
-report word timing, since the word highlight is half the point; the Natural
-voices are grouped first and are the ones this is built around. They synthesise
-locally, so nothing about reading aloud leaves the browser. If a voice you saved
-is no longer installed, the best available one is used instead and the console
-says so.
+Speech uses Kokoro-82M, a neural voice running on your own GPU. Its nine voices
+are grouped first in the picker and one of them is the default; they sound the
+same on every machine and all report per-word timing, which is what the highlight
+needs. Run `sh fetch-assets.sh` in the repo root once to install the model — see
+the root README. Chrome's own `chrome.tts` voices stay below them, and the reader
+falls back to those if the model is missing or will not start.
+
+The picker lists only voices that report word timing, since the word highlight is
+half the point. Everything synthesises locally either way, so nothing about
+reading aloud leaves the browser. If a voice you saved is no longer available, the
+best remaining one is used instead and the console says so.
 
 Your voice, your speed, and where you stopped in each article are remembered —
 see *What is stored* below. This is the same feature, with the same controls,
@@ -136,15 +141,33 @@ overlay and every later one toggles it. Permissions are `activeTab`,
 `scripting`, `storage` and `tts` — no broad host access beyond the three lookup
 hosts above, and nothing phones home.
 
-Read aloud is split across the two: `chrome.tts` is not available to content
-scripts, so the service worker does the speaking and the reader drives it over a
-long-lived port. No playback state lives in the worker — MV3 suspends it after
-~30s idle — so it is a speaker, not a player. `tts-plan.md` has the reasoning;
-the modules under `speech/`, `player/`, `core/`, `view/` and `store/` are copied
+Read aloud is split across the two, and now across a third place as well.
+`chrome.tts` is not available to content scripts, so the service worker does that
+speaking and the reader drives it over a long-lived port. No playback state lives
+in the worker — MV3 suspends it after ~30s idle — so it is a speaker, not a
+player. `tts-plan.md` has the reasoning.
+
+Kokoro cannot run in the content script either, for a different reason: compiling
+WebAssembly and starting a module Worker are both checked against the CSP of
+whatever site you are on, so the voice would work on a blog and fail on GitHub.
+So `tts-frame.html` is injected as a hidden iframe. It is an extension page, so it
+carries this extension's CSP and gets WebAssembly, module Workers, WebGPU and Web
+Audio everywhere. The audio plays there; only the word events come back, and the
+highlighting stays in `content.js` where the article's text nodes are. One model
+per tab, so two tabs can read at once.
+
+The modules under `speech/`, `player/`, `core/`, `view/` and `store/` are copied
 from `epub-reader`, which is the repo's rule for shared code.
 
 ## Surprises worth knowing
 
+- **The voice frame needs `allow="autoplay"`.** User activation is per-frame, so
+  the click on Read aloud activates the article page and not `tts-frame.html`.
+  Without the delegation the frame's `AudioContext` stays suspended — and the
+  failure hides itself, because the word events are timers: the highlight marches
+  happily through a sentence nobody can hear.
+- The frame talks over a `MessagePort`, not `window.postMessage`. The article page
+  shares this DOM and can post into the frame; it cannot reach the port.
 - `reader.css` is fetched by the content script at runtime, which is why it's
   listed under `web_accessible_resources` in the manifest. So are the read-aloud
   modules: `content.js` is injected as a classic script and cannot use `import`

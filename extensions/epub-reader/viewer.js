@@ -7,6 +7,9 @@ import * as modelFactory from "./core/document-model.js";
 import * as rendererFactory from "./view/renderer.js";
 import * as highlighterFactory from "./view/highlighter.js";
 import * as speechAdapter from "./speech/adapter.js";
+import * as kokoroAdapter from "./speech/kokoro-adapter.js";
+import * as dualFactory from "./speech/dual.js";
+import { HeadTTS } from "./lib/headtts/headtts.mjs";
 import * as playerFactory from "./player/controller.js";
 import * as controlsFactory from "./view/controls.js";
 import * as settings from "./store/settings.js";
@@ -29,7 +32,38 @@ const NO_TTS = {
   speak: () => {},
   stop: () => {},
 };
-const speech = speechAdapter.create(globalThis.chrome?.tts ?? NO_TTS);
+const system = speechAdapter.create(globalThis.chrome?.tts ?? NO_TTS);
+
+// Kokoro runs from files inside the extension folder, so it needs the extension
+// to exist. On that same static server it does not, and speech/dual is skipped
+// entirely rather than stubbed — chrome.tts's adapter has always been the whole
+// interface, and nothing downstream calls warmUp or prefetch without checking.
+const kokoro = globalThis.chrome?.runtime?.getURL
+  ? kokoroAdapter.create({
+      HeadTTS,
+      onstatus: (text) => text && console.log(`[epub-reader] ${text}`),
+    })
+  : null;
+
+const speech = kokoro
+  ? dualFactory.create({
+      kokoro,
+      system,
+      // The model is 326MB and fetch-assets.sh may never have been run. Say so
+      // once, in the notice panel, and carry on with chrome.tts.
+      onfallback: (message) => {
+        console.error(`[epub-reader] neural voice unavailable: ${message}`);
+        // Kept so it can be read back later: globalThis.__kokoroError
+        globalThis.__kokoroError = message;
+        notice(
+          `The neural voice could not start, so a system voice is reading instead.` +
+          `<br><small>${message}</small>`,
+          true,
+          true,
+        );
+      },
+    })
+  : system;
 
 // A chapter that scrolls far away is torn down, and comes back built from new
 // text nodes. The words the model holds for it would then point into a document
@@ -44,13 +78,19 @@ renderer.onFill = (n, root) => {
   if (rebound && highlighter.section === n) highlighter.refresh();
 };
 
-function notice(html, isError) {
+function notice(html, isError, sticky) {
   noticeEl.hidden = false;
   noticeEl.className = isError ? "error" : "";
+  // A sticky notice survives the next clearNotice(). The voice failing is the
+  // one message you cannot afford to lose, and pressing play — the very next
+  // thing anyone does — used to wipe it before it could be read.
+  noticeEl.dataset.sticky = sticky ? "1" : "";
   noticeEl.innerHTML = html;
 }
 
-function clearNotice() {
+function clearNotice(force) {
+  if (noticeEl.dataset.sticky && !force) return;
+  noticeEl.dataset.sticky = "";
   noticeEl.hidden = true;
 }
 
@@ -75,7 +115,16 @@ const voices = await speech.listVoices();
 // picks instead — and section 8's row for that says to tell the user which voice
 // ended up speaking, which voiceNotes() does.
 const savedVoice = prefs.voice ? voices.find((v) => v.id === prefs.voice) : null;
-let voice = savedVoice || speechAdapter.chooseVoice(voices);
+// Kokoro's default wins when its voices are there at all; chooseVoice is handed
+// only those, because its last resort is "the first voice in the list" and the
+// list it is given here holds chrome.tts's as well. With no model installed this
+// is empty and section 7's chain decides, exactly as it used to.
+const neuralVoices = voices.filter((v) => v.premium);
+let voice =
+  savedVoice ||
+  neuralVoices.find((v) => v.preferred) ||
+  neuralVoices[0] ||
+  speechAdapter.chooseVoice(voices);
 let rate = prefs.rate ?? 1;
 
 console.log(
@@ -160,6 +209,14 @@ function startPlayer(startAt) {
       settings.savePosition(doc.key, sentence.section, sentence.start, doc.label);
     }
   });
+
+  // Loading the model and making the first sentence both take seconds, and both
+  // can happen while the first page is still being read. Without this the first
+  // press of Read aloud waits for the pair of them.
+  if (speech.warmUp) {
+    const first = model.sentence(startAt);
+    speech.warmUp(first && first.text, { voice: voice && voice.id, rate });
+  }
 
   controls.setEnabled(true);
   controls.setPlaying(player.playing);

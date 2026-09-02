@@ -50,6 +50,22 @@
   });
 
   // Brief notice for pages where no article can be extracted.
+  // Like toast(), but it waits to be read and dismissed. An error that removes
+  // itself after 2.5 seconds is an error nobody can act on, and this one carries
+  // the only description of why the voice did not start.
+  function stickyToast(message) {
+    const el = document.createElement("div");
+    el.textContent = message + "\n\n(click to dismiss)";
+    el.style.cssText =
+      "position:fixed;top:24px;left:50%;transform:translateX(-50%);" +
+      "z-index:2147483647;background:#5c1f1a;color:#faf8f3;max-width:min(680px,90vw);" +
+      "font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;padding:14px 18px;" +
+      "border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.3);cursor:pointer;" +
+      "white-space:pre-wrap;user-select:text";
+    el.addEventListener("click", () => el.remove());
+    document.documentElement.appendChild(el);
+  }
+
   function toast(message) {
     const el = document.createElement("div");
     el.textContent = message;
@@ -400,6 +416,7 @@
     const load = (path) => import(chrome.runtime.getURL(path));
     return Promise.all([
       load("speech/adapter.js"),
+      load("speech/dual.js"),
       load("player/controller.js"),
       load("core/text-walk.js"),
       load("core/document-model.js"),
@@ -407,6 +424,143 @@
       load("view/highlighter.js"),
       load("store/settings.js"),
     ]);
+  }
+
+  // Kokoro cannot run here either, and for a different reason: compiling
+  // WebAssembly and starting a module Worker are checked against the CSP of
+  // whatever site we are injected into, so the voice would work on a blog and
+  // fail on GitHub. tts-frame.html is an extension page, which carries the
+  // extension's own CSP instead — so the model runs there, in a hidden iframe,
+  // and this is the adapter-shaped proxy that drives it.
+  //
+  // The audio plays in the frame. Only the word events come back, and the
+  // highlighting stays here, where the article's text nodes are.
+  function kokoroOverFrame() {
+    const listeners = { start: [], word: [], done: [], error: [] };
+    const pending = new Map(); // request id -> resolve, for listVoices
+    let nextToken = 1;
+    let nextRequest = 1;
+    let port = null;
+    let queue = [];
+    let frame = null;
+    let alive = false; // the frame has answered at least once
+
+    function emit(kind, ...args) {
+      for (const cb of listeners[kind]) cb(...args);
+    }
+
+    function send(message) {
+      if (port) port.postMessage(message);
+      else queue.push(message);
+    }
+
+    function receive(data) {
+      if (!data) return;
+      if (data.type === "hello") {
+        alive = true;
+        return;
+      }
+      if (data.type === "log") {
+        console.log(`[reading-mode/voice] ${data.text}`);
+        return;
+      }
+      if (data.type === "voices") {
+        const resolve = pending.get(data.id);
+        if (resolve) {
+          pending.delete(data.id);
+          resolve(data.voices || []);
+        }
+        return;
+      }
+      if (data.type === "event") emit(data.kind, data.token, data.arg);
+    }
+
+    // allow="autoplay" is load-bearing: user activation is per-frame, so the
+    // click on Read aloud activates this page and not the frame. Without the
+    // delegation the frame's AudioContext stays suspended, and the failure hides
+    // itself — the highlight still marches, on silence.
+    frame = document.createElement("iframe");
+    frame.src = chrome.runtime.getURL("tts-frame.html");
+    frame.allow = "autoplay";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:absolute;width:0;height:0;border:0;visibility:hidden";
+
+    const channel = new MessageChannel();
+    channel.port1.onmessage = (e) => receive(e.data);
+
+    frame.addEventListener("load", () => {
+      // A MessagePort rather than window.postMessage for everything after this:
+      // the article page shares this DOM and can post into the frame, but it
+      // cannot reach the port.
+      frame.contentWindow.postMessage({ type: "rm-tts-connect" }, "*", [channel.port2]);
+      port = channel.port1;
+      for (const message of queue) port.postMessage(message);
+      queue = [];
+    });
+    // Out of the article's flow, and out of the model's way: document.body, not
+    // the reader overlay, so text-walk never sees it.
+    document.body.appendChild(frame);
+
+    // A frame the page refused to allow still fires `load` — for about:blank —
+    // so silence is the only symptom, and it looks exactly like read-aloud
+    // simply not being there. Name it instead.
+    setTimeout(() => {
+      if (alive) return;
+      console.warn(
+        "[reading-mode] the voice frame never answered. This page's " +
+          "Content-Security-Policy most likely refused to frame it, so reading " +
+          "falls back to a chrome.tts voice. Look for a 'Refused to frame' " +
+          "message above.",
+      );
+    }, 4000);
+
+    return {
+      listVoices() {
+        const id = nextRequest++;
+        return new Promise((resolve) => {
+          pending.set(id, resolve);
+          send({ type: "voices", id });
+          // The frame is inside the extension, so this only fails if the frame
+          // itself did not load. Report no voices rather than hanging the reader.
+          setTimeout(() => {
+            if (pending.delete(id)) resolve([]);
+          }, 5000);
+        });
+      },
+
+      warmUp(text, options) {
+        send({ type: "warmUp", text, options });
+        return Promise.resolve();
+      },
+
+      prefetch(text, options) {
+        send({ type: "prefetch", text, options });
+      },
+
+      speak(text, options) {
+        const token = nextToken++;
+        send({ type: "speak", token, text, options });
+        return token;
+      },
+
+      stop() {
+        send({ type: "stop" });
+      },
+
+      dispose() {
+        send({ type: "stop" });
+        try {
+          channel.port1.close();
+        } catch {}
+        frame.remove();
+        port = null;
+      },
+
+      onStart: (cb) => listeners.start.push(cb),
+      onWord: (cb) => listeners.word.push(cb),
+      onDone: (cb) => listeners.done.push(cb),
+      onError: (cb) => listeners.error.push(cb),
+    };
   }
 
   // chrome.tts is not exposed to content scripts, so the worker speaks and we
@@ -563,6 +717,7 @@
     }
     const [
       speechAdapter,
+      dualFactory,
       playerFactory,
       textWalk,
       modelFactory,
@@ -573,12 +728,32 @@
     if (!stillOpen()) return;
 
     const tts = ttsOverPort();
-    const speech = speechAdapter.create(tts);
+    const system = speechAdapter.create(tts);
+
     // The article is one section: there is nothing to page in, so the model's
     // laziness costs nothing and buys the resume lookup.
     const model = modelFactory.create({ sectionCount: 1, runs: () => textWalk.walk(body) });
     await model.ensureSections(1);
     if (!model.sentences.length) return;
+
+    // Only now. The frame is an iframe that loads a 326MB model, and the return
+    // above has no teardown to hang its disposal on — building it before that
+    // check leaves one running on a page whose reader has already gone.
+    const kokoro = kokoroOverFrame();
+    const speech = dualFactory.create({
+      kokoro,
+      system,
+      // The model is 326MB and fetch-assets.sh may never have been run. Say it
+      // once and carry on with chrome.tts — the reader still reads.
+      onfallback: (message) => {
+        console.error(`[reading-mode] neural voice unavailable: ${message}`);
+        // Kept so it can be read back later: globalThis.__kokoroError
+        globalThis.__kokoroError = message;
+        stickyToast(
+          `Neural voice unavailable, so a system voice is reading instead.\n\n${message}`,
+        );
+      },
+    });
 
     const scrollEl = bar.parentElement;
     const highlighter = highlighterFactory.create(scrollEl, bar);
@@ -590,12 +765,21 @@
     const voices = await speech.listVoices();
     if (!stillOpen()) {
       tts.disconnect();
+      kokoro.dispose();
       return;
     }
     // A saved voice wins if it is still installed; otherwise the adapter's own
     // chain picks. Audio without highlighting beats no audio.
     const savedVoice = prefs.voice ? voices.find((v) => v.id === prefs.voice) : null;
-    let voice = savedVoice || speechAdapter.chooseVoice(voices);
+    // Kokoro's voices are the default when the model is installed. Only they are
+    // handed to its chooser, whose last resort is "the first voice in the list"
+    // — and this list holds chrome.tts's as well.
+    const neuralVoices = voices.filter((v) => v.premium);
+    let voice =
+      savedVoice ||
+      neuralVoices.find((v) => v.preferred) ||
+      neuralVoices[0] ||
+      speechAdapter.chooseVoice(voices);
     let rate = prefs.rate ?? 1;
 
     console.log(
@@ -634,6 +818,14 @@
       sentenceId: 0,
     });
 
+    // Loading the model and making the first sentence both take seconds, and
+    // both can happen while you are still reading the first paragraph. Without
+    // this the first press of Read aloud waits for the pair of them.
+    if (speech.warmUp) {
+      const first = model.sentence(0);
+      speech.warmUp(first && first.text, { voice: voice && voice.id, rate });
+    }
+
     player.onState(({ playing }) => controls.setPlaying(playing));
     player.onError((message) => toast(`Speech stopped: ${message}`));
     player.onEnd(() => {
@@ -668,6 +860,9 @@
       player.pause();
       highlighter.dispose();
       tts.disconnect();
+      // The frame holds the model, an AudioContext and a Worker. Closing the
+      // reader has to take all three with it.
+      kokoro.dispose();
     };
     // The Highlights feature splits and merges the article's text nodes under
     // the model's feet, and the failure is silent — the spoken word simply stops
@@ -723,6 +918,9 @@
     // the highlight, and reveal() then puts it on screen — nothing has been
     // spoken yet, so draw()'s word-following has no word to follow.
     await player.seek(sentence.id);
+    // Resuming moved the position off sentence 0, so the sentence warmed above
+    // is not the one that will be spoken. Make the right one instead.
+    if (speech.warmUp) speech.warmUp(sentence.text, { voice: voice && voice.id, rate });
     highlighter.reveal();
     toast("Picked up where you stopped reading.");
   }

@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Reading Mode voice</title>
+<!--
+  The voice, in a frame of its own.
+
+  Nothing is ever shown here. The reader is a content script, and a content
+  script cannot host Kokoro: compiling WebAssembly and starting a module Worker
+  are both checked against the CSP of whatever site you happen to be on, so the
+  voice would work on a blog and fail on GitHub. This page is an extension page,
+  so it carries the extension's own CSP instead, and gets WebAssembly, module
+  Workers, WebGPU and Web Audio everywhere.
+
+  content.js drives it over a MessagePort. See speech/kokoro-adapter for what is
+  underneath, and tts-frame.js for the wiring.
+-->
+<script type="module" src="tts-frame.js"></script>

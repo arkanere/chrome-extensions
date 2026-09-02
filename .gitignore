@@ -4,3 +4,11 @@
 # Local secrets (see config.example.js in each extension)
 config.js
 .env
+
+# Kokoro read-aloud assets: ~460MB, fetched by fetch-assets.sh, hardlinked into
+# each extension. Too big for git; the script is how you get them back. Both sets
+# of weights are needed — fp32 for WebGPU, q8 for the wasm fallback.
+.assets-cache/
+extensions/*/models/
+extensions/*/voices/
+extensions/*/lib/ort/

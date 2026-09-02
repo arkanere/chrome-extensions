@@ -9,6 +9,9 @@
     "https://en.wikipedia.org/*",
     "https://generativelanguage.googleapis.com/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "background": {
     "service_worker": "background.js"
   },
@@ -30,7 +33,9 @@
     {
       "resources": [
         "reader.css",
+        "tts-frame.html",
         "speech/adapter.js",
+        "speech/dual.js",
         "player/controller.js",
         "core/text-walk.js",
         "core/document-model.js",

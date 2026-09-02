@@ -16,6 +16,17 @@
 // Position, so resume re-speaks the current sentence from its start. One code
 // path serves pause, seek and resume-on-open.
 
+// Kokoro is a synthesiser, not a player: a sentence takes seconds to make. So the
+// audio for the sentences ahead is started while the current one is still being
+// spoken, or every sentence boundary would be heard as a gap. chrome.tts has no
+// prefetch() and ignores this entirely.
+//
+// Coupled to the Kokoro adapter's cache ceiling of 8, which must hold the
+// sentence playing plus this whole lookahead — otherwise the oldest entry is
+// evicted just before it is reached and the work is done twice, which is worse
+// than not prefetching at all.
+const LOOKAHEAD = 3;
+
 export function create(model, speech, config = {}) {
   const listeners = { position: [], state: [], error: [], end: [] };
 
@@ -73,6 +84,18 @@ export function create(model, speech, config = {}) {
     liveToken = speech.speak(sentence.text, { voice, rate });
     emitPosition();
     prefetch(sentence.section + 1);
+    prefetchAudio();
+  }
+
+  // The prefetch above is about parsing text; this is about making audio. Both
+  // run ahead of the voice, for the same reason and at different costs.
+  function prefetchAudio() {
+    if (typeof speech.prefetch !== "function") return;
+    for (let i = 1; i <= LOOKAHEAD; i++) {
+      const next = model.sentence(sentenceId + i);
+      if (!next) break;
+      speech.prefetch(next.text, { voice, rate });
+    }
   }
 
   speech.onWord((token, charIndex) => {
