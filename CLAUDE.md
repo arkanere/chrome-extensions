@@ -16,6 +16,8 @@ Respond in simple technical English
 
 Commit straight to `main` and push. Don't create a branch and don't open a pull request unless I ask for one — solo maintainer, no review step to wait on.
 
+Do not commit until explicitly asked to do so. 
+
 ## About chrome-extension
 
 This is a open source project. I create extensions that I want.

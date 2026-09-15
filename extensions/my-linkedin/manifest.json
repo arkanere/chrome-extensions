@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "my-linkedin",
   "version": "0.1.0",
-  "description": "A LinkedIn feed of the accounts you follow, and nothing else — posts by accounts you do not follow, ads, and the news-and-puzzles rail are hidden.",
+  "description": "A LinkedIn feed of the accounts you follow, and nothing else: posts from anyone you don't follow, ads, and the news-and-puzzles rail are hidden.",
   "content_scripts": [
     {
       "matches": [
