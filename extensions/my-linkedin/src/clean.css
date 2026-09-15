@@ -1,0 +1,24 @@
+/*
+ * The right-hand rail: LinkedIn News, Today's puzzles, the ad that sticks to
+ * the bottom of it, and the footer links underneath.
+ *
+ * None of it is the feed and none of it is from anyone you follow, so it goes
+ * for the same reason the posts do.
+ *
+ * Pure CSS, no pass. The rail is rendered once with the page rather than
+ * streamed in like posts, so there is nothing for the tick to catch.
+ *
+ * `aria-label="Aside"` is the anchor. LinkedIn ships no usable class names, but
+ * it does label its two columns: the left one is "Sidebar" and this is "Aside".
+ * It exists on the feed and nowhere else — /mynetwork has only the Sidebar, and
+ * /notifications labels neither of its columns — so this rule is feed-scoped by
+ * the markup and needs no page check of its own.
+ *
+ * The feed column is left where it is rather than re-centred. Moving it means
+ * fighting LinkedIn's grid on every layout change, for a column that is
+ * already where your eyes expect it.
+ */
+
+aside[aria-label="Aside"] {
+  display: none !important;
+}

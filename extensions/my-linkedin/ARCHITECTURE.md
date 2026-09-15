@@ -84,7 +84,14 @@ src/lib/bar.js      the bar at the top: the name, and how many posts went
 src/pages/feed.js   the pass over every visible post
 src/feed.css        one rule: .myli-hidden { display: none }
 src/bar.css         the bar, and the room it takes
+src/clean.css       hides the right-hand rail — news, puzzles, the ad, the footer
 ```
+
+The rail needs no pass: it is rendered once with the page rather than streamed
+in like posts, so one CSS rule on `aside[aria-label="Aside"]` does it. LinkedIn
+labels its two columns — the left is "Sidebar", the right is "Aside" — and the
+right one exists on the feed and nowhere else, so the rule is feed-scoped by
+the markup. The feed column is left where it is rather than re-centred.
 
 A feed post is `div[role="listitem"][componentkey^="update-card-focus"]`. The
 prefix is stable; the rest of the key is the post's identity, and it is what

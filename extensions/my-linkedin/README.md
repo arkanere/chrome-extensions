@@ -14,6 +14,8 @@ as it is, and we take out the part of it you have said you don't want.
 
 - Hides every feed post whose author you do not follow, and every "Promoted"
   post. Aggressive is the point — if the feed empties out, that is it working.
+- Hides the right-hand rail: LinkedIn News, Today's puzzles, the ad stuck to
+  the bottom of it, and the footer links.
 - Leaves posts by the people and pages you follow alone — with one deliberate
   exception, a reshare of a stranger's post, which goes. Changes nothing about
   how LinkedIn loads the feed.
