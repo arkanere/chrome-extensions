@@ -80,12 +80,24 @@ dependencies, no service worker, no popup.
 src/watch.js        the tick — a coalesced MutationObserver, 200ms
 src/lib/extract.js  reading a post out of the DOM (the only file that knows markup)
 src/lib/rules.js    the keep/hide decision — no settings, both rules always on
+src/lib/bar.js      the bar at the top: the name, and how many posts went
 src/pages/feed.js   the pass over every visible post
 src/feed.css        one rule: .myli-hidden { display: none }
+src/bar.css         the bar, and the room it takes
 ```
 
 A feed post is `div[role="listitem"][componentkey^="update-card-focus"]`. The
-prefix is stable; the rest of the key is the post's identity.
+prefix is stable; the rest of the key is the post's identity, and it is what
+the bar counts — the pass re-decides every card on every tick, so counting
+cards rather than ids would climb by a screenful several times a second.
+
+Making room for the bar is one CSS rule, which is unusual. LinkedIn pins
+nothing to the viewport: `body` is `overflow: hidden` at viewport height, the
+whole app lives in `#root` at that same height, and the scrolling happens
+inside it. So the nav sits at the top because it is first in normal flow, and
+shrinking `#root` by the bar's height moves everything down with it, with
+nothing to re-apply on a view change. Padding `body` instead would push the
+bottom of the app off the screen.
 
 LinkedIn is a single-page app and fires no navigation event of its own, but
 every view change rewrites the DOM, so the observer already sees it — there is

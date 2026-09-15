@@ -1,0 +1,68 @@
+/*
+ * The bar across the top of LinkedIn, and the room it needs.
+ *
+ * Top, like every other extension here: my-x has #myx-bar at top: 0, my-youtube
+ * the same, and both readers have a sticky header. A bar you have to look down
+ * for is not the same object.
+ *
+ * Making room is easier here than on X, which pins three separate pieces of
+ * chrome to the viewport. LinkedIn pins nothing: `body` is `overflow: hidden`
+ * at viewport height, the whole app lives in `#root` at that same height, and
+ * the scrolling happens inside. So the nav sits at the top because it is first
+ * in normal flow, not because it is fixed — and shrinking #root by the bar's
+ * height moves everything down with it, in one rule, with nothing to chase on
+ * a view change.
+ *
+ * Padding the body instead would push the bottom of the app off the screen,
+ * since its height is the viewport's and it does not scroll.
+ *
+ * Theme comes from data-myli-theme, which bar.js sets by reading LinkedIn's
+ * own background colour — it marks its dark mode in no way CSS can hang off.
+ */
+
+:root {
+  --myli-bar-h: 28px;
+}
+
+#root {
+  height: calc(100vh - var(--myli-bar-h)) !important;
+  margin-top: var(--myli-bar-h) !important;
+}
+
+#myli-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--myli-bar-h);
+  padding: 0 16px;
+  box-sizing: border-box;
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.9);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+#myli-bar[data-myli-theme="dark"] {
+  background: #1b1f23;
+  color: rgba(255, 255, 255, 0.9);
+  border-bottom-color: rgba(255, 255, 255, 0.18);
+}
+
+.myli-bar__name {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.5;
+  flex: none;
+}
+
+.myli-bar__status {
+  opacity: 0.85;
+  white-space: nowrap;
+  flex: none;
+}

@@ -9,12 +9,14 @@
         "*://www.linkedin.com/*"
       ],
       "css": [
+        "src/bar.css",
         "src/feed.css"
       ],
       "js": [
         "src/watch.js",
         "src/lib/extract.js",
         "src/lib/rules.js",
+        "src/lib/bar.js",
         "src/pages/feed.js"
       ],
       "run_at": "document_end",

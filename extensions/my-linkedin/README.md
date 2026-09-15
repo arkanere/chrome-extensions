@@ -34,6 +34,10 @@ they get a second rule.
 
 On a live feed this hid 24 of 33 cards.
 
+A thin bar across the top says `my-linkedin` and how many posts it has taken
+out since the page loaded. Hidden posts leave no gap, so without it there is no
+way to tell the filter working from the filter broken.
+
 Everything else — why not the "Jane Doe likes this" line, why not the connection
 degree, what breaks and when — is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
