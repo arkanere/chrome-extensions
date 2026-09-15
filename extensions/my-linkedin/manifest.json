@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "my-linkedin",
+  "version": "0.1.0",
+  "description": "A LinkedIn feed of the accounts you follow, and nothing else — posts by accounts you do not follow, and ads, are hidden.",
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.linkedin.com/*"
+      ],
+      "css": [
+        "src/feed.css"
+      ],
+      "js": [
+        "src/watch.js",
+        "src/lib/extract.js",
+        "src/lib/rules.js",
+        "src/pages/feed.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ]
+}

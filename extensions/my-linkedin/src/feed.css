@@ -1,0 +1,9 @@
+/*
+ * One rule. Everything else about LinkedIn's layout is LinkedIn's business.
+ *
+ * display:none rather than removing the node, so the feed's own paging logic
+ * still sees the cards it is holding.
+ */
+.myli-hidden {
+  display: none !important;
+}
